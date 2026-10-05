@@ -6,7 +6,7 @@ import { sites } from "./build/sites-vite-plugin";
 import { connectorPreview } from "./build/connector-preview-plugin.mjs";
 
 const SITE_CREATOR_PLACEHOLDER_DATABASE_ID =
-  "00000000-0000-4000-8000-000000000000";
+  process.env.CLOUDFLARE_D1_DATABASE_ID || "7397c798-b04f-4d0d-bd2e-b15b5455fbab";
 
 const { d1, r2 } = hostingConfig;
 
@@ -21,7 +21,7 @@ const localBindingConfig = {
     ? [
         {
           binding: d1,
-          database_name: "site-creator-d1",
+          database_name: "barraca-uno-db",
           database_id: SITE_CREATOR_PLACEHOLDER_DATABASE_ID,
         },
       ]
