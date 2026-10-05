@@ -150,3 +150,21 @@ export async function deleteSession(token: string): Promise<void> {
   const db = profileDb();
   await db.prepare('DELETE FROM user_sessions WHERE token = ?').bind(token).run();
 }
+
+export async function changeUserPassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
+  const db = profileDb();
+  const creds = await db.prepare('SELECT password_hash AS passwordHash, salt FROM user_credentials WHERE user_id = ?').bind(userId).first<{ passwordHash: string; salt: string }>();
+  if (!creds) {
+    throw new Error('Credenciales no encontradas para esta cuenta.');
+  }
+  const valid = await verifyPassword(currentPassword, creds.passwordHash, creds.salt);
+  if (!valid) {
+    throw new Error('La contraseña actual es incorrecta.');
+  }
+  if (!newPassword || newPassword.length < 6) {
+    throw new Error('La nueva contraseña debe tener al menos 6 caracteres.');
+  }
+  const { hash, salt } = await hashPassword(newPassword);
+  await db.prepare('UPDATE user_credentials SET password_hash = ?, salt = ? WHERE user_id = ?').bind(hash, salt, userId).run();
+}
+

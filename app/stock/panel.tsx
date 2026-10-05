@@ -163,7 +163,7 @@ export function StockPanel() {
                       <tr key={p.id}>
                         <td>
                           <div className="stock-material">
-                            <img src={`/products/${p.imageId}.jpg`} alt="" />
+                            <img src={p.imageSrc || `/products/${p.imageId}.jpg`} alt="" />
                             <div><strong>{p.name}</strong><small>{p.sku} · {p.category}</small></div>
                           </div>
                         </td>
@@ -285,7 +285,7 @@ export function StockPanel() {
             </div>
             <h2>{pending.type === 'receive' ? 'Añadir más stock' : pending.type === 'issue' ? 'Registrar salida' : 'Ajustar por conteo'}</h2>
             <div className="stock-selected">
-              <img src={`/products/${pending.product.imageId}.jpg`} alt="" />
+              <img src={pending.product.imageSrc || `/products/${pending.product.imageId}.jpg`} alt="" />
               <div>
                 <strong>{pending.product.name}</strong>
                 <small>{pending.product.sku} · Actual: {pending.product.stock} {pending.product.unit}</small>

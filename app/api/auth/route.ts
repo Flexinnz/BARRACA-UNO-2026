@@ -2,7 +2,7 @@ import {cookies} from 'next/headers';
 import {authClient,authConfig,safeReturn,siteOrigin} from '../../../lib/supabase';
 import {getChatGPTUser} from '../../chatgpt-auth';
 import {ensureAccount,accountEnabled} from '../../../lib/accounts';
-import {createLocalUser,authenticateLocalUser,createSession,deleteSession,SESSION_COOKIE_NAME} from '../../../lib/auth-local';
+import {createLocalUser,authenticateLocalUser,createSession,deleteSession,changeUserPassword,SESSION_COOKIE_NAME} from '../../../lib/auth-local';
 
 export const dynamic='force-dynamic';
 const json=(body:unknown,status=200)=>Response.json(body,{status,headers:{'Cache-Control':'no-store'}});
@@ -45,14 +45,14 @@ export async function POST(request:Request){
     return json({error:'Formato no permitido.'},415);
   }
 
-  let input:{action?:string;email?:string;password?:string;name?:string;returnTo?:string};
+  let input:{action?:string;email?:string;password?:string;name?:string;returnTo?:string;currentPassword?:string;newPassword?:string};
   try{
     input=JSON.parse(raw);
   }catch{
     return json({error:'Solicitud inválida.'},400);
   }
 
-  if(!input||!['login','register','recover','reset','logout'].includes(input.action??'')){
+  if(!input||!['login','register','recover','reset','logout','change-password'].includes(input.action??'')){
     return json({error:'Acción inválida.'},400);
   }
 
@@ -60,7 +60,7 @@ export async function POST(request:Request){
         email=typeof input.email==='string'?input.email.trim().toLowerCase():'',
         password=typeof input.password==='string'?input.password:'';
 
-  if(!['reset','logout'].includes(action!)&&(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||email.length>254)){
+  if(!['reset','logout','change-password'].includes(action!)&&(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||email.length>254)){
     return json({error:'Ingresá un correo válido.'},400);
   }
   if(['login','register','reset'].includes(action!)&&(!password||password.length>128||(action!=='login'&&password.length<6))){
@@ -136,6 +136,28 @@ export async function POST(request:Request){
         if(error)return json({error:'No pudimos cambiar la contraseña. Probá una contraseña diferente.'},400);
       }
       return json({redirect:'/cuenta'});
+    }
+
+    if(action==='change-password'){
+      const user=await getChatGPTUser();
+      if(!user)return json({error:'Debés iniciar sesión para cambiar tu contraseña.'},401);
+      const currentPassword=typeof input.currentPassword==='string'?input.currentPassword:'';
+      const newPassword=typeof input.newPassword==='string'?input.newPassword:'';
+      if(!currentPassword)return json({error:'Ingresá tu contraseña actual.'},400);
+      if(!newPassword||newPassword.length<6||newPassword.length>128)return json({error:'La nueva contraseña debe tener entre 6 y 128 caracteres.'},400);
+      if(currentPassword===newPassword)return json({error:'La nueva contraseña debe ser diferente a la actual.'},400);
+
+      if(authConfig()){
+        try{
+          const client=await authClient();
+          await client.auth.updateUser({password:newPassword});
+        }catch(e){
+          console.warn('Supabase password update failed',e);
+        }
+      }
+
+      await changeUserPassword(user.userId,currentPassword,newPassword);
+      return json({ok:true,message:'Tu contraseña fue actualizada con éxito.'});
     }
 
     if(action==='login'){

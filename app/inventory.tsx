@@ -5,8 +5,8 @@ import { Dialog } from './modal';
 import { BrandLogo, CityScape } from './brand-art';
 import { GalleryProvider, useProductGallery } from './product-gallery';
 import { useAccount, useTheme, ThemeButton, Avatar, AccountContent } from './profile-panel';
-import { Package, Search, X, ShoppingCart, Bell, ChevronDown, Grid2X2, List, Plus, Minus, Trash2, Check, Building2, ArrowUpRight, Boxes, TriangleAlert, Paintbrush, Wrench, Zap, Droplets, Layers, FileText, CheckCircle2, Clock, Truck, XCircle, MapPin, CreditCard, Phone, StickyNote, ClipboardList, RefreshCw } from 'lucide-react';
-import { Category, Product, OrderItem, names, categories, defaultProducts } from '../lib/catalog';
+import { Package, Search, X, ShoppingCart, Bell, ChevronDown, Grid2X2, List, Plus, Minus, Trash2, Check, Building2, ArrowUpRight, Boxes, TriangleAlert, Paintbrush, Wrench, Zap, Droplets, Layers, FileText, CheckCircle2, Clock, Truck, XCircle, MapPin, CreditCard, Phone, StickyNote, ClipboardList, RefreshCw, Users } from 'lucide-react';
+import { Category, Product, OrderItem, names, categories, defaultProducts, APP_VERSION } from '../lib/catalog';
 
 const money = (v: number) => new Intl.NumberFormat('es-UY', { style: 'currency', currency: 'UYU', maximumFractionDigits: 0 }).format(v);
 const fmtDate = (v: string) => new Intl.DateTimeFormat('es-UY', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Montevideo' }).format(new Date(v));
@@ -64,7 +64,7 @@ function Badge({ p }: { p: Product }) {
 }
 function Visual({ p, small = false }: { p: Product; small?: boolean }) {
   const open = useProductGallery();
-  return <button type="button" aria-label={`Ver fotos de ${p.name}`} onClick={() => open(p)} className={`product-visual photo ${small ? 'small' : ''}`}><img src={`/products/${p.imageId}.jpg`} alt={`Imagen ilustrativa de ${p.name}`} loading="lazy" />{!small && <span className="photo-brand">{p.brand}</span>}<span className="photo-expand">Ver fotos ↗</span></button>;
+  return <button type="button" aria-label={`Ver fotos de ${p.name}`} onClick={() => open(p)} className={`product-visual photo ${small ? 'small' : ''}`}><img src={p.imageSrc || `/products/${p.imageId}.jpg`} alt={`Imagen ilustrativa de ${p.name}`} loading="lazy" />{!small && <span className="photo-brand">{p.brand}</span>}<span className="photo-expand">Ver fotos ↗</span></button>;
 }
 function ProductCard({ p, onAdd, table = false }: { p: Product; onAdd: (p: Product, q: number) => void; table?: boolean }) {
   const [q, setQ] = useState(1), [added, setAdded] = useState(false);
@@ -385,8 +385,8 @@ export default function Home({ initialProducts = defaultProducts }: { initialPro
               <hr />
               <button onClick={() => { setProfile(false); setProfilePanel(true) }}>{account.authenticated ? 'Personalizar mi perfil' : 'Iniciar sesión'}</button>
               <a href="/cuenta">Mi cuenta</a>
-              {account.authenticated && <button onClick={() => { setProfile(false); setMyOrders(true) }}><ClipboardList size={15} />Mis pedidos</button>}
-              {account.isAdmin && <><a href="/stock">Control de stock</a><a href="/administracion">Administrar cuentas</a><a href="/pedidos-admin">Gestión de pedidos</a></>}
+              {account.authenticated && !account.isAdmin && <button onClick={() => { setProfile(false); setMyOrders(true) }}><ClipboardList size={15} />Mis pedidos</button>}
+              {account.isAdmin && <><a href="/stock">Control de stock</a><a href="/clientes">Gestión de clientes</a><a href="/pedidos-admin">Gestión de pedidos</a><a href="/administracion">Seguridad y cuentas</a></>}
               <a href="/locales">Nuestros locales</a>
               <a href="/guia">Cómo usar Barraca Uno</a>
               {account.authenticated && <a href="/auth/logout" target="_top">Cerrar sesión</a>}
@@ -401,13 +401,14 @@ export default function Home({ initialProducts = defaultProducts }: { initialPro
           <div className="side-label">BARRACA</div>
           <div className="side-active"><Package size={19} /> Inventario <span>{products.length}</span></div>
           {account.isAdmin && <a href="/stock" className="cat-link stock-nav"><Boxes size={17} />Control de stock <Plus size={15} /></a>}
+          {account.isAdmin && <a href="/clientes" className="cat-link"><Users size={17} />Gestión de clientes</a>}
           {account.isAdmin && <a href="/pedidos-admin" className="cat-link"><ClipboardList size={17} />Gestión de pedidos</a>}
           <a href="/locales" className="cat-link"><Building2 size={17} />Nuestros locales</a>
           <div className="side-label category-label">CATEGORÍAS</div>
           <button className={`cat-link ${f.category === 'Todas' ? 'selected' : ''}`} onClick={() => f.setCategory('Todas')}><Grid2X2 size={17} />Todos los materiales<span>{products.length}</span></button>
           {categories.map(c => { const Icon = icons[c.name]; return <button key={c.id} className={`cat-link ${f.category === c.name ? 'selected' : ''}`} onClick={() => f.setCategory(c.name)}><Icon size={17} />{c.name}<span>{products.filter(p => p.category === c.name).length}</span></button> })}
           <div className="sidebar-note"><CityScape /><span className="note-icon"><Building2 size={20} /></span><strong>Uno para todos.</strong><span>De la barraca a tu obra.</span><div><span className="live-dot" /> Stock sincronizado</div></div>
-          <div className="sidebar-footer">BARRACA UNO <span>v2.0</span></div>
+          <div className="sidebar-footer">BARRACA UNO <span>{APP_VERSION}</span></div>
         </aside>
 
         <main>
