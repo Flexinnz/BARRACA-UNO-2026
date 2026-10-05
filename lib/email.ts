@@ -4,6 +4,16 @@ import { profileDb } from '../db/profiles';
 let cachedApiKey: string | null = null;
 let cachedFromEmail: string | null = null;
 
+export interface EmailLog {
+  id: number;
+  recipient: string;
+  subject: string;
+  status: 'delivered' | 'failed';
+  resend_id?: string;
+  error_message?: string;
+  created_at: string;
+}
+
 export async function getEmailConfig(): Promise<{ apiKey: string | null; fromEmail: string }> {
   let dbKey: string | null = null;
   let dbFrom: string | null = null;
@@ -31,7 +41,7 @@ export async function getEmailConfig(): Promise<{ apiKey: string | null; fromEma
   const envFrom = (typeof process !== 'undefined' && process.env?.RESEND_FROM) || null;
 
   const apiKey = dbKey || envKey || cachedApiKey;
-  // Note: Default to onboarding@resend.dev unless a custom verified domain is provided
+  // Default to official Resend testing sender onboarding@resend.dev
   const fromEmail = dbFrom || envFrom || cachedFromEmail || 'Barraca Uno <onboarding@resend.dev>';
 
   return { apiKey, fromEmail };
@@ -68,6 +78,65 @@ export async function saveEmailConfig(apiKey?: string, fromEmail?: string): Prom
   }
 }
 
+export async function logEmailAttempt({
+  recipient,
+  subject,
+  status,
+  resendId,
+  errorMessage,
+}: {
+  recipient: string;
+  subject: string;
+  status: 'delivered' | 'failed';
+  resendId?: string;
+  errorMessage?: string;
+}): Promise<void> {
+  try {
+    const db = profileDb();
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS email_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        recipient TEXT,
+        subject TEXT,
+        status TEXT,
+        resend_id TEXT,
+        error_message TEXT,
+        created_at TEXT
+      )
+    `).run();
+
+    const now = new Date().toISOString();
+    await db.prepare(`
+      INSERT INTO email_logs (recipient, subject, status, resend_id, error_message, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).bind(recipient, subject, status, resendId || null, errorMessage || null, now).run();
+  } catch (e) {
+    console.warn('Could not record email log', e);
+  }
+}
+
+export async function getRecentEmailLogs(limit = 15): Promise<EmailLog[]> {
+  try {
+    const db = profileDb();
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS email_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        recipient TEXT,
+        subject TEXT,
+        status TEXT,
+        resend_id TEXT,
+        error_message TEXT,
+        created_at TEXT
+      )
+    `).run();
+
+    const res = await db.prepare('SELECT * FROM email_logs ORDER BY id DESC LIMIT ?').bind(limit).all<EmailLog>();
+    return res.results || [];
+  } catch {
+    return [];
+  }
+}
+
 export async function sendEmail({
   to,
   subject,
@@ -82,8 +151,9 @@ export async function sendEmail({
   const { apiKey, fromEmail } = await getEmailConfig();
 
   if (!apiKey) {
-    const msg = 'RESEND_API_KEY no configurada. Ingresala en el panel de administración o variables de entorno.';
+    const msg = 'RESEND_API_KEY no configurada. Ingresala en /administracion o variables de entorno.';
     console.warn(msg);
+    await logEmailAttempt({ recipient: to, subject, status: 'failed', errorMessage: msg });
     return { success: false, error: msg };
   }
 
@@ -100,16 +170,23 @@ export async function sendEmail({
     if (error) {
       console.error('Error returned by Resend API:', error);
       let errorMsg = error.message;
-      if (errorMsg.includes('domain is not verified')) {
-        errorMsg += '. Sugerencia: Para pruebas sin dominio propio, usá como remitente "Barraca Uno <onboarding@resend.dev>".';
+      if (errorMsg.toLowerCase().includes('only send testing emails to your own email address')) {
+        errorMsg += ' [Modo Sandbox de Resend: con el remitente "onboarding@resend.dev", Resend solo permite enviar al correo de tu cuenta. Para enviar a clientes y correos externos debés agregar tu dominio en resend.com/domains]';
+      } else if (errorMsg.toLowerCase().includes('domain is not verified')) {
+        errorMsg += ' [Dominio no verificado: usá "Barraca Uno <onboarding@resend.dev>" como remitente para pruebas].';
       }
+
+      await logEmailAttempt({ recipient: to, subject, status: 'failed', errorMessage: errorMsg });
       return { success: false, error: errorMsg };
     }
 
-    return { success: true, id: data?.id };
+    const emailId = data?.id;
+    await logEmailAttempt({ recipient: to, subject, status: 'delivered', resendId: emailId });
+    return { success: true, id: emailId };
   } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : 'Error desconocido al enviar correo.';
+    const errorMsg = err instanceof Error ? err.message : 'Error de conexión al enviar correo.';
     console.error('Exception calling Resend:', err);
+    await logEmailAttempt({ recipient: to, subject, status: 'failed', errorMessage: errorMsg });
     return { success: false, error: errorMsg };
   }
 }
@@ -128,7 +205,9 @@ export async function sendOrderConfirmationEmail({
   paymentMethod: string;
 }) {
   const moneyStr = `$${total.toLocaleString('es-UY')}`;
-  return sendEmail({
+
+  // 1. Send confirmation to the customer
+  const clientResult = await sendEmail({
     to: customerEmail,
     subject: `¡Confirmación de tu pedido ${orderId}! - Barraca Uno`,
     html: `
@@ -154,6 +233,36 @@ export async function sendOrderConfirmationEmail({
       </div>
     `,
   });
+
+  // 2. Also send an alert copy to the store administrator
+  try {
+    const adminEmails = ['caordamian@gmail.com', 'brunosaravia09@gmail.com'];
+    for (const adm of adminEmails) {
+      if (adm.toLowerCase() !== customerEmail.toLowerCase()) {
+        await sendEmail({
+          to: adm,
+          subject: `🛒 [NUEVA VENTA] Pedido ${orderId} por ${moneyStr} - ${customerName}`,
+          html: `
+            <div style="font-family: sans-serif; padding: 20px; color: #0f172a;">
+              <h2 style="color: #0B3C5D;">¡Nueva orden de compra recibida en la barraca!</h2>
+              <p>Un cliente acaba de realizar una orden de compra:</p>
+              <ul>
+                <li><strong>Número de pedido:</strong> ${orderId}</li>
+                <li><strong>Cliente:</strong> ${customerName} (${customerEmail})</li>
+                <li><strong>Total con IVA:</strong> ${moneyStr} UYU</li>
+                <li><strong>Forma de pago:</strong> ${paymentMethod}</li>
+              </ul>
+              <p>Ingresá al <a href="/pedidos-admin">Panel de Gestión de Pedidos</a> para aprobar el despacho.</p>
+            </div>
+          `,
+        });
+      }
+    }
+  } catch (e) {
+    console.warn('Admin notification email failed', e);
+  }
+
+  return clientResult;
 }
 
 export async function sendOrderStatusUpdatedEmail({

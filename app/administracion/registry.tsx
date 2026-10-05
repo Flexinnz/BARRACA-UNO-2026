@@ -45,6 +45,7 @@ export function AccountRegistry() {
 
   // Email settings state
   const [emailConfig, setEmailConfig] = useState<{ configured: boolean; maskedKey: string; fromEmail: string } | null>(null);
+  const [emailLogs, setEmailLogs] = useState<Array<{ id: number; recipient: string; subject: string; status: string; resend_id?: string; error_message?: string; created_at: string }>>([]);
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [fromEmailInput, setFromEmailInput] = useState('');
   const [testEmailInput, setTestEmailInput] = useState('');
@@ -73,9 +74,10 @@ export function AccountRegistry() {
     try {
       const res = await fetch('/api/admin/email-settings', { cache: 'no-store' });
       if (res.ok) {
-        const data = (await res.json()) as { configured: boolean; maskedKey: string; fromEmail: string };
+        const data = (await res.json()) as { configured: boolean; maskedKey: string; fromEmail: string; logs?: Array<{ id: number; recipient: string; subject: string; status: string; resend_id?: string; error_message?: string; created_at: string }> };
         setEmailConfig(data);
         if (data.fromEmail) setFromEmailInput(data.fromEmail);
+        if (data.logs) setEmailLogs(data.logs);
       }
     } catch (e) {
       console.warn('Could not load email settings', e);
@@ -444,6 +446,60 @@ export function AccountRegistry() {
             {emailMessage && <p className="admin-success" style={{ marginTop: '10px', marginBottom: 0 }}>{emailMessage}</p>}
             {emailError && <p className="admin-error" style={{ marginTop: '10px', marginBottom: 0 }}>{emailError}</p>}
           </div>
+
+          {/* Sandbox explanation note */}
+          <div style={{ marginTop: '14px', padding: '12px', background: 'rgba(245, 158, 11, 0.08)', borderRadius: '8px', border: '1px solid rgba(245, 158, 11, 0.2)', fontSize: '12px', lineHeight: '1.5' }}>
+            <strong style={{ color: '#d97706', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+              <AlertCircle size={15} /> ¿Por qué no le llegan correos a personas o cuentas en incógnito?
+            </strong>
+            <span style={{ color: 'var(--text-soft)' }}>
+              Por políticas de seguridad de Resend, cuando usás el remitente de prueba <code>onboarding@resend.dev</code>, Resend <strong>únicamente entrega correos a la dirección con la que creaste tu cuenta de Resend</strong>. Si un cliente compra con un correo diferente o desde incógnito, Resend bloquea el envío al cliente (a menos que agregues tu dominio en <a href="https://resend.com/domains" target="_blank" rel="noreferrer" style={{ color: 'var(--accent)', fontWeight: 600 }}>resend.com/domains</a>). Como solución, el sistema ahora siempre envía una <strong>copia automática al administrador</strong> con cada compra.
+            </span>
+          </div>
+
+          {/* Email logs table */}
+          {emailLogs.length > 0 && (
+            <div style={{ marginTop: '18px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '13px', fontWeight: 600 }}>Historial de envíos recientes</span>
+                <button type="button" className="secondary icon-only" onClick={() => void loadEmailConfig()} style={{ padding: '4px' }} title="Actualizar historial">
+                  <RefreshCw size={13} />
+                </button>
+              </div>
+              <div className="table-scroll" style={{ maxHeight: '200px' }}>
+                <table style={{ fontSize: '12px' }}>
+                  <thead>
+                    <tr>
+                      <th>Destinatario</th>
+                      <th>Asunto</th>
+                      <th>Estado</th>
+                      <th>Fecha</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {emailLogs.map((log) => (
+                      <tr key={log.id}>
+                        <td><strong>{log.recipient}</strong></td>
+                        <td>{log.subject}</td>
+                        <td>
+                          {log.status === 'delivered' ? (
+                            <span style={{ color: '#10b981', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                              <CheckCircle2 size={13} /> Entregado
+                            </span>
+                          ) : (
+                            <span style={{ color: '#ef4444', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }} title={log.error_message}>
+                              <AlertCircle size={13} /> Bloqueado
+                            </span>
+                          )}
+                        </td>
+                        <td><small>{date(log.created_at)}</small></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </section>
 
         <section className="admin-history">

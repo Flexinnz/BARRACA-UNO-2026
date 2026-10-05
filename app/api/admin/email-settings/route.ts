@@ -1,6 +1,6 @@
 import { getChatGPTUser } from '../../../chatgpt-auth';
 import { isCompanyAdmin } from '../../../../lib/accounts';
-import { getEmailConfig, saveEmailConfig, sendEmail } from '../../../../lib/email';
+import { getEmailConfig, saveEmailConfig, sendEmail, getRecentEmailLogs } from '../../../../lib/email';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,12 +12,14 @@ export async function GET() {
 
   const { apiKey, fromEmail } = await getEmailConfig();
   const maskedKey = apiKey ? `${apiKey.slice(0, 4)}••••••••${apiKey.slice(-4)}` : '';
+  const logs = await getRecentEmailLogs(20);
 
   return Response.json({
     configured: !!apiKey,
     hasApiKey: !!apiKey,
     maskedKey,
     fromEmail,
+    logs,
   }, { headers: { 'Cache-Control': 'no-store' } });
 }
 
