@@ -146,7 +146,7 @@ interface CheckoutForm { paymentMethod: string; shippingAddress: string; shippin
 function CheckoutModal({ cart, account, onSuccess, onBack }: {
   cart: ReturnType<typeof useCart>;
   account: ReturnType<typeof useAccount>;
-  onSuccess: (id: string) => void;
+  onSuccess: (id: string, total: number, paymentMethod: string) => void;
   onBack: () => void;
 }) {
   const [form, setForm] = useState<CheckoutForm>({ paymentMethod: '', shippingAddress: '', shippingCity: '', shippingPhone: '', notes: '' });
@@ -164,8 +164,9 @@ function CheckoutModal({ cart, account, onSuccess, onBack }: {
       const r = await fetch('/api/orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const d = await r.json() as { orderId?: string; error?: string };
       if (!r.ok) throw Error(d.error || 'No pudimos procesar tu pedido.');
+      const total = cart.total;
       cart.clear();
-      onSuccess(d.orderId!);
+      onSuccess(d.orderId!, total, form.paymentMethod);
     } catch (e) { setError(e instanceof Error ? e.message : 'Error al enviar el pedido.'); }
     finally { setSubmitting(false); }
   };
@@ -246,6 +247,7 @@ function CheckoutModal({ cart, account, onSuccess, onBack }: {
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function Home({ initialProducts = defaultProducts }: { initialProducts?: Product[] }) {
   const [products, setProducts] = useState(initialProducts), [stockError, setStockError] = useState(''), [stockRefreshing, setStockRefreshing] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const f = useFilters(products), cart = useCart(products), account = useAccount();
 
   // Live stock refresh
@@ -287,9 +289,10 @@ export default function Home({ initialProducts = defaultProducts }: { initialPro
   const [drawer, setDrawer] = useState(false);
   const [checkout, setCheckout] = useState(false);
   const [myOrders, setMyOrders] = useState(false);
-  const [receipt, setReceipt] = useState<{ id: string; total: number } | null>(null);
+  const [receipt, setReceipt] = useState<{ id: string; total: number; method: string } | null>(null);
   const [profile, setProfile] = useState(false);
   const [toast, setToast] = useState('');
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
   const add = (p: Product, q: number) => { cart.add(p, q); setDrawer(true); setToast(`${p.name} agregado a la orden`) };
   useEffect(() => { if (toast) { const t = setTimeout(() => setToast(''), 2500); return () => clearTimeout(t) } }, [toast]);
@@ -312,9 +315,26 @@ export default function Home({ initialProducts = defaultProducts }: { initialPro
         <a className="brand" href="/" aria-label="Barraca Uno inicio"><span className="real-logo"><BrandLogo /></span><span className="brand-divider" /><span className="brand-context">Barraca<small>Inventario y compras</small></span></a>
         <div className="global-search"><Search size={19} /><input aria-label="Buscar productos" placeholder="Buscar por material, código SKU, marca..." value={f.search} onChange={e => f.setSearch(e.target.value)} />{f.search && <button aria-label="Limpiar búsqueda" onClick={() => f.setSearch('')}><X size={16} /></button>}</div>
         <div className="header-actions">
-          <button className="alert-button" aria-label="Ver alertas de stock" onClick={() => { f.setStock('Stock Crítico'); f.setCategory('Todas') }}><Bell size={21} /><span className="alert-dot">{products.filter(p => p.stock > 0 && p.stock <= 10).length}</span></button>
+          <div style={{ position: 'relative' }}>
+            <button className="alert-button" aria-label="Ver alertas de stock" onClick={() => setNotificationsOpen(!notificationsOpen)}><Bell size={21} /><span className="alert-dot">{products.filter(p => p.stock > 0 && p.stock <= 10).length}</span></button>
+            {notificationsOpen && (
+              <div className="profile-menu" style={{ right: 0, width: '320px', zIndex: 100 }}>
+                <h4 style={{ margin: '0 0 10px', fontSize: '14px', color: 'var(--blue)' }}>Alertas de Stock</h4>
+                <div style={{ maxHeight: '250px', overflowY: 'auto' }}>
+                  {products.filter(p => p.stock > 0 && p.stock <= 10).map(p => (
+                    <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border)', fontSize: '12px' }}>
+                      <span style={{ fontWeight: 600 }}>{p.name}</span>
+                      <span className="status low" style={{ marginLeft: '10px' }}>Quedan {p.stock}</span>
+                    </div>
+                  ))}
+                  {products.filter(p => p.stock > 0 && p.stock <= 10).length === 0 && <p style={{ fontSize: '12px', color: 'var(--muted)' }}>No hay alertas de stock bajo.</p>}
+                </div>
+                <button className="secondary" style={{ width: '100%', marginTop: '10px', fontSize: '12px', padding: '8px' }} onClick={() => { f.setStock('Stock Crítico'); f.setCategory('Todas'); setNotificationsOpen(false); }}>Ver todos en catálogo</button>
+              </div>
+            )}
+          </div>
           <button className="theme-button" aria-label="Actualizar stock" title="Actualizar stock" onClick={() => void manualRefresh()} disabled={stockRefreshing} style={{ color: stockRefreshing ? 'var(--accent-line)' : undefined }}><RefreshCw size={19} style={{ animation: stockRefreshing ? 'spin 0.8s linear infinite' : undefined }} /></button>
-          {account.authenticated && (
+          {account.authenticated && !account.isAdmin && (
             <button className="orders-trigger" onClick={() => setMyOrders(true)} title="Mis pedidos"><ClipboardList size={20} /><span>Mis pedidos</span></button>
           )}
           <button className="cart-trigger" onClick={() => setDrawer(true)}><span className="cart-icon"><ShoppingCart size={21} />{cart.count > 0 && <b>{cart.count}</b>}</span><span>Mi orden<small>{money(cart.total)}</small></span></button>
@@ -432,20 +452,52 @@ export default function Home({ initialProducts = defaultProducts }: { initialPro
           cart={cart}
           account={account}
           onBack={() => { setCheckout(false); setDrawer(true) }}
-          onSuccess={(id) => { setCheckout(false); setReceipt({ id, total: cart.total }); }}
+          onSuccess={(id, total, method) => { setCheckout(false); setReceipt({ id, total, method }); }}
         />
       )}
 
       {/* ── Receipt ── */}
       {receipt && (
         <Dialog label="¡Pedido enviado!" onClose={() => setReceipt(null)}>
-          <div className="modal-content success">
+          <div className="modal-content success" style={{ paddingBottom: '40px' }}>
             <CheckCircle2 size={56} />
             <h2>¡Pedido confirmado!</h2>
             <p className="receipt-id">{receipt.id}</p>
             <div className="modal-total">Total con IVA<strong>{money(receipt.total)}</strong></div>
-            <p>Tu pedido fue registrado. El equipo de Barraca Uno lo va a revisar y te contactará para coordinar el pago y la entrega.</p>
-            <button className="primary" onClick={() => { setReceipt(null); setMyOrders(true) }}><ClipboardList size={17} />Ver mis pedidos</button>
+            <p style={{ marginBottom: '25px', lineHeight: '1.5' }}>
+              {receipt.method === 'Efectivo / Redpagos / Abitab' ? 'Llevá este número a cualquier sucursal para abonar tu pedido. ' : 'Tu pago se procesó correctamente. '}
+              El equipo de Barraca Uno lo va a revisar y te contactará para coordinar la entrega.
+            </p>
+            
+            <button className="primary" style={{ width: '100%', marginBottom: '12px' }} onClick={async () => {
+              setIsGeneratingPdf(true);
+              try {
+                const html2canvas = (await import('html2canvas')).default;
+                const { jsPDF } = await import('jspdf');
+                const element = document.createElement('div');
+                element.innerHTML = `
+                  <div style="padding:40px;font-family:sans-serif;color:#0f172a;width:600px">
+                    <h1 style="color:#0B3C5D;margin:0 0 5px">BARRACA UNO</h1>
+                    <p style="color:#64748b;margin:0 0 30px">Comprobante de Pedido</p>
+                    <h2 style="font-size:32px;margin:0 0 10px">Pedido ${receipt.id}</h2>
+                    <p style="font-size:18px;margin:0 0 20px">Total: <strong>${money(receipt.total)}</strong></p>
+                    <p style="color:#64748b;background:#f8fafc;padding:15px;border-radius:8px">
+                      ${receipt.method === 'Efectivo / Redpagos / Abitab' ? 'Presente este número de pedido en Redpagos o Abitab para abonar.' : 'Abonado vía ' + receipt.method}
+                    </p>
+                  </div>
+                `;
+                document.body.appendChild(element);
+                const canvas = await html2canvas(element);
+                document.body.removeChild(element);
+                const pdf = new jsPDF('p', 'mm', 'a4');
+                pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 10, 10, 190, (canvas.height * 190) / canvas.width);
+                pdf.save(`Comprobante_BarracaUno_${receipt.id}.pdf`);
+              } catch (e) { alert('Error al generar PDF'); }
+              finally { setIsGeneratingPdf(false); }
+            }}>
+              <FileText size={16} />{isGeneratingPdf ? 'Generando...' : 'Descargar comprobante (PDF)'}
+            </button>
+            <button className="secondary" style={{ width: '100%', marginBottom: '12px' }} onClick={() => { setReceipt(null); setMyOrders(true) }}><ClipboardList size={17} />Ver mis pedidos</button>
             <button className="clear-order" onClick={() => setReceipt(null)}>Volver al catálogo</button>
           </div>
         </Dialog>
