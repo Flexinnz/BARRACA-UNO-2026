@@ -245,10 +245,21 @@ function CheckoutModal({ cart, account, onSuccess, onBack }: {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function Home({ initialProducts = defaultProducts }: { initialProducts?: Product[] }) {
-  const [products, setProducts] = useState(initialProducts), [stockError, setStockError] = useState('');
+  const [products, setProducts] = useState(initialProducts), [stockError, setStockError] = useState(''), [stockRefreshing, setStockRefreshing] = useState(false);
   const f = useFilters(products), cart = useCart(products), account = useAccount();
 
   // Live stock refresh
+  const manualRefresh = useCallback(async () => {
+    setStockRefreshing(true); setStockError('');
+    try {
+      const response = await fetch('/api/products', { cache: 'no-store' });
+      const data = await response.json() as { error?: string; products: Product[] };
+      if (!response.ok) throw Error(data.error || 'No pudimos actualizar el stock.');
+      setProducts(data.products);
+    } catch (e) { setStockError(e instanceof Error ? e.message : 'No pudimos actualizar el stock.') }
+    finally { setStockRefreshing(false); }
+  }, []);
+
   useEffect(() => {
     if (!account.authenticated) return;
     let alive = true, inFlight = false;
@@ -302,6 +313,7 @@ export default function Home({ initialProducts = defaultProducts }: { initialPro
         <div className="global-search"><Search size={19} /><input aria-label="Buscar productos" placeholder="Buscar por material, código SKU, marca..." value={f.search} onChange={e => f.setSearch(e.target.value)} />{f.search && <button aria-label="Limpiar búsqueda" onClick={() => f.setSearch('')}><X size={16} /></button>}</div>
         <div className="header-actions">
           <button className="alert-button" aria-label="Ver alertas de stock" onClick={() => { f.setStock('Stock Crítico'); f.setCategory('Todas') }}><Bell size={21} /><span className="alert-dot">{products.filter(p => p.stock > 0 && p.stock <= 10).length}</span></button>
+          <button className="theme-button" aria-label="Actualizar stock" title="Actualizar stock" onClick={() => void manualRefresh()} disabled={stockRefreshing} style={{ color: stockRefreshing ? 'var(--accent-line)' : undefined }}><RefreshCw size={19} style={{ animation: stockRefreshing ? 'spin 0.8s linear infinite' : undefined }} /></button>
           {account.authenticated && (
             <button className="orders-trigger" onClick={() => setMyOrders(true)} title="Mis pedidos"><ClipboardList size={20} /><span>Mis pedidos</span></button>
           )}
