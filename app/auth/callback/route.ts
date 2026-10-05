@@ -1,0 +1,7 @@
+import {cookies} from 'next/headers';
+import {authClient,safeReturn,siteOrigin} from '../../../lib/supabase';
+import {getChatGPTUser} from '../../chatgpt-auth';
+import {ensureAccount,accountEnabled} from '../../../lib/accounts';
+import type {EmailOtpType} from '@supabase/supabase-js';
+export const dynamic='force-dynamic';
+export async function GET(request:Request){const url=new URL(request.url);try{const client=await authClient();const code=url.searchParams.get('code'),token=url.searchParams.get('token_hash'),type=url.searchParams.get('type');let ok=false;if(code){const {error}=await client.auth.exchangeCodeForSession(code);ok=!error;}else if(token&&['signup','email','recovery'].includes(type??'')){const {error}=await client.auth.verifyOtp({token_hash:token,type:type as EmailOtpType});ok=!error;}if(ok){const store=await cookies();const remembered=store.get('barraca-auth-next')?.value;store.set('barraca-auth-next','',{httpOnly:true,sameSite:'lax',secure:true,path:'/auth/callback',maxAge:0});const next=type==='recovery'||remembered==='/ingresar?mode=reset'?'/ingresar?mode=reset':safeReturn(remembered??url.searchParams.get('next'));const user=await getChatGPTUser();if(user){const account=await ensureAccount(user);if(accountEnabled(account,user))return new Response(null,{status:303,headers:{Location:siteOrigin+next,'Cache-Control':'no-store'}});}await client.auth.signOut();}}catch{}return new Response(null,{status:303,headers:{Location:`${siteOrigin}/ingresar?error=callback`,'Cache-Control':'no-store'}});}

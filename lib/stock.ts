@@ -1,0 +1,6 @@
+import {profileDb} from '../db/profiles';
+import {defaultProducts,StockProduct} from './catalog';
+export interface StockMovement{id:string;productId:number;type:string;amount:number;delta:number;before:number;after:number;reason:string;reference:string;actorId:string;actorEmail:string;actorName?:string;createdAt:string}
+export async function readStock():Promise<StockProduct[]>{const result=await profileDb().prepare('SELECT product_id AS productId,quantity,version,updated_at AS updatedAt FROM product_stock').all<{productId:number;quantity:number;version:number;updatedAt:string}>();return defaultProducts.map(p=>{const row=result.results.find(row=>row.productId===p.id);if(!row)throw Error('Stock record missing');return {...p,stock:row.quantity,version:row.version,updatedAt:row.updatedAt}})}
+export async function readMovements():Promise<StockMovement[]>{return (await profileDb().prepare('SELECT sm.id, sm.product_id AS productId, sm.type, sm.amount, sm.delta, sm.before_quantity AS before, sm.after_quantity AS after, sm.reason, sm.reference, sm.actor_id AS actorId, sm.actor_email AS actorEmail, COALESCE(p.display_name, sm.actor_email) AS actorName, sm.created_at AS createdAt FROM stock_movements sm LEFT JOIN profiles p ON p.user_id=sm.actor_id ORDER BY sm.created_at DESC, sm.id DESC LIMIT 100').all<StockMovement>()).results}
+

@@ -1,0 +1,4 @@
+/updates/latest.json
+  Cache-Control: no-store, max-age=0
+/updates/BarracaUno-*.exe
+  Cache-Control: public, max-age=31536000, immutable

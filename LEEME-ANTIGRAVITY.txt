@@ -1,0 +1,19 @@
+BARRACA UNO - ABRIR EN ANTIGRAVITY
+
+1. Descomprimir este ZIP.
+2. Abrir la carpeta barraca-uno en Antigravity.
+3. Pedir al asistente que lea README.md, GUIA-CUENTAS.md,
+   GUIA-SUPABASE.md y package.json antes de modificar el proyecto.
+4. Instalar Node.js 22.13 o posterior. Instalar dependencias con
+   npm ci. Para iniciar el entorno de desarrollo: npm run dev.
+
+El proyecto utiliza Sites/Cloudflare D1 y Supabase. Las funciones
+que dependen de esos servicios necesitan configuracion y acceso
+propios. Los datos de la base y los permisos no se transfieren con
+este ZIP. Consultar las guias antes de conectar servicios.
+
+Se excluyeron credenciales locales, historial Git, dependencias,
+archivos temporales y la vinculacion al proyecto original de Sites.
+.env.example contiene una plantilla. El chat de Codex no se incluye.
+Algunos archivos y guias conservan referencias al despliegue original;
+revisarlas antes de publicar una copia.

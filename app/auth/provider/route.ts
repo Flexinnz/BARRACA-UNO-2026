@@ -1,0 +1,5 @@
+import {cookies} from 'next/headers';
+import {authClient,enabledProviders,safeReturn,siteOrigin} from '../../../lib/supabase';
+import type {Provider} from '@supabase/supabase-js';
+export const dynamic='force-dynamic';
+export async function GET(request:Request){const url=new URL(request.url),provider=url.searchParams.get('provider');const providers=await enabledProviders();if(!provider||!providers.includes(provider))return Response.redirect(`${siteOrigin}/ingresar?error=provider`,303);const store=await cookies();store.set('barraca-auth-next',safeReturn(url.searchParams.get('return_to')),{httpOnly:true,sameSite:'lax',secure:true,path:'/auth/callback',maxAge:3600});const client=await authClient();const {data,error}=await client.auth.signInWithOAuth({provider:provider as Provider,options:{redirectTo:`${siteOrigin}/auth/callback`,skipBrowserRedirect:true}});if(error||!data.url)return Response.redirect(`${siteOrigin}/ingresar?error=provider`,303);return new Response(null,{status:303,headers:{Location:data.url,'Cache-Control':'no-store'}});}
