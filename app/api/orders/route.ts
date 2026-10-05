@@ -90,17 +90,18 @@ export async function POST(req:Request){
       .bind(mvId,item.productId,'out',item.quantity,-item.quantity,(after?.quantity??0)+item.quantity,after?.quantity??0,'Pedido de compra',orderId,user.userId,user.email,now).run();
   }
 
-  // Send Email Notification
-  if (process.env.RESEND_API_KEY) {
-    try {
-      const resend = new Resend(process.env.RESEND_API_KEY);
-      await resend.emails.send({
-        from: 'Barraca Uno <ventas@barraca-uno.com>',
-        to: user.email,
-        subject: `Tu pedido ${orderId} está en proceso`,
-        html: `<h2>¡Hola ${userName}!</h2><p>Recibimos tu pedido <strong>${orderId}</strong> por un total de $${total}.</p><p>Actualmente se encuentra <strong>Pendiente</strong> en proceso de espera del pago.</p><p>Método seleccionado: ${paymentMethod}</p><p>Te avisaremos cuando haya novedades. ¡Gracias por elegir Barraca Uno!</p>`
-      });
-    } catch (e) { console.error('Error sending email', e); }
+  // Send Email Notification via robust email module
+  try {
+    const { sendOrderConfirmationEmail } = await import('../../../lib/email');
+    await sendOrderConfirmationEmail({
+      orderId,
+      customerEmail: user.email,
+      customerName: userName,
+      total,
+      paymentMethod,
+    });
+  } catch (e) {
+    console.error('Error sending order confirmation email:', e);
   }
 
   return Response.json({orderId,total},{status:201});

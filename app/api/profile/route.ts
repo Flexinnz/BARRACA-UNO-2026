@@ -31,14 +31,13 @@ export async function PUT(request:Request){
     const result=await db.prepare('INSERT INTO profiles (user_id, email, display_name, company, phone, bio, avatar, accent, theme, density, updated_at) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE EXISTS(SELECT 1 FROM accounts WHERE user_id=? AND (status=\'active\' OR ?=1)) ON CONFLICT(user_id) DO UPDATE SET email=excluded.email, display_name=excluded.display_name, company=excluded.company, phone=excluded.phone, bio=excluded.bio, avatar=excluded.avatar, accent=excluded.accent, theme=excluded.theme, density=excluded.density, updated_at=excluded.updated_at').bind(user.userId,user.email,profile.displayName,profile.company,profile.phone,profile.bio,profile.avatar,profile.accent,profile.theme,profile.density,updatedAt,user.userId,isCompanyAdmin(user)?1:0).run();
     if(!result.meta.changes)return json({error:'Tu cuenta no está habilitada.',blocked:true},403);
     
-    if (isNew && process.env.RESEND_API_KEY) {
+    if (isNew) {
       try {
-        const resend = new Resend(process.env.RESEND_API_KEY);
-        await resend.emails.send({
-          from: 'Barraca Uno <hola@barraca-uno.com>',
+        const { sendEmail } = await import('../../../lib/email');
+        await sendEmail({
           to: user.email,
           subject: '¡Bienvenido a Barraca Uno!',
-          html: `<h2>¡Hola ${profile.displayName}!</h2><p>Te damos la bienvenida a tu espacio en <strong>Barraca Uno</strong>.</p><p>Tu cuenta ha sido verificada y activada exitosamente con el correo ${user.email}. Ya podés navegar nuestro catálogo y gestionar tus pedidos.</p><p>¡Gracias por elegirnos!</p>`
+          html: `<h2>¡Hola ${profile.displayName}!</h2><p>Te damos la bienvenida a tu espacio en <strong>Barraca Uno</strong>.</p><p>Tu cuenta ha sido activada exitosamente con el correo ${user.email}. Ya podés navegar nuestro catálogo, armar presupuestos y gestionar tus compras de obra.</p><p>¡Gracias por elegirnos!</p>`,
         });
       } catch (e) { console.error('Error sending welcome email', e); }
     }
