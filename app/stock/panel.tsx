@@ -1,26 +1,348 @@
 "use client";
-import {useEffect,useState} from 'react';
-import {Boxes,Plus,Minus,ClipboardCheck,Search,RefreshCw,X,ArrowUpRight,History} from 'lucide-react';
-import {BrandLogo} from '../brand-art';
-import {useTheme,ThemeButton} from '../profile-panel';
-import {Dialog} from '../modal';
-import {categories,StockProduct} from '../../lib/catalog';
-import type {StockMovement} from '../../lib/stock';
-import {stockSections,stockSectionFor} from '../../lib/stock-sections';
-const normalize=(s:string)=>s.normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase();
-const date=(s:string)=>{try{const d=new Date(s);return new Intl.DateTimeFormat('es-UY',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'America/Montevideo'}).format(d)+' hs'}catch{return s}};
-const labels:Record<string,string>={receive:'Entrada',issue:'Salida',count:'Conteo'};
-export function StockPanel(){const {theme,setTheme}=useTheme();const [products,setProducts]=useState<StockProduct[]>([]),[movements,setMovements]=useState<StockMovement[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState(''),[message,setMessage]=useState(''),[search,setSearch]=useState(''),[category,setCategory]=useState('Todas'),[status,setStatus]=useState('Todos'),[historyProduct,setHistoryProduct]=useState('all'),[section,setSection]=useState('all');
- const [pending,setPending]=useState<{product:StockProduct;type:string;id:string}|null>(null),[amount,setAmount]=useState(''),[reason,setReason]=useState(''),[reference,setReference]=useState(''),[saving,setSaving]=useState(false),[actionError,setActionError]=useState('');
- const load=async()=>{setLoading(true);setError('');try{const response=await fetch('/api/admin/stock',{cache:'no-store'});const data=await response.json() as {error?:string;products:StockProduct[];movements:StockMovement[]};if(!response.ok)throw Error(data.error||'No pudimos cargar el stock.');setProducts(data.products);setMovements(data.movements);return data.products as StockProduct[]}catch(e){setError(e instanceof Error?e.message:'No pudimos cargar el stock.');return null}finally{setLoading(false)}};
- useEffect(()=>{void load()},[]);
- const start=(product:StockProduct,type:string)=>{setPending({product,type,id:crypto.randomUUID()});setAmount(type==='count'?String(product.stock):'');setReason('');setReference('');setActionError('');setMessage('')};
- const filteredProducts=products.filter(p=>normalize(`${p.name} ${p.sku} ${p.brand}`).includes(normalize(search))&&(category==='Todas'||p.category===category)&&(status==='Todos'||(status==='Agotado'?p.stock===0:status==='Stock Bajo'?p.stock>0&&p.stock<=10:p.stock>10)));
- const groups=stockSections.map(group=>({...group,products:filteredProducts.filter(p=>stockSectionFor(p)===group.id)})).filter(group=>(section==='all'||section===group.id)&&group.products.length>0);
- const rows=groups.flatMap(group=>group.products);
- const n=Number(amount),next=pending?(pending.type==='receive'?pending.product.stock+n:pending.type==='issue'?pending.product.stock-n:n):0;
- const valid=!!pending&&amount.trim()!==''&&Number.isSafeInteger(n)&&n>=(pending.type==='count'?0:1)&&n<=1000000&&next>=0&&next<=1000000&&next!==pending.product.stock&&!!reason.trim();
-return <div className="admin-page stock-page"><header className="account-page-header"><a className="account-logo" href="/"><BrandLogo/></a><a className="back-catalog" href="/">Volver al catálogo</a><a className="back-catalog" href="/locales">Nuestros locales</a><ThemeButton theme={theme} setTheme={setTheme}/></header><main className="admin-main"><div className="admin-title"><div><div className="eyebrow">BARRACA UNO / EXISTENCIAS</div><h1>El stock, al día.</h1><p>Registrá lo que entra, lo que sale y lo que contás en el depósito.</p></div><a className="secondary stock-catalog-link" href="/">Ver catálogo <ArrowUpRight size={16}/></a></div><section className="admin-stats" aria-label="Resumen de stock"><div><Boxes size={20}/><strong>{products.length}</strong><span>Materiales</span></div><div><strong>{products.filter(p=>p.stock>10).length}</strong><span>Disponibles</span></div><div><strong>{products.filter(p=>p.stock>0&&p.stock<=10).length}</strong><span>Stock bajo</span></div><div><strong>{products.filter(p=>p.stock===0).length}</strong><span>Agotados</span></div></section><div className="registry-controls stock-controls"><label className="registry-search"><Search size={18}/><input aria-label="Buscar material para stock" placeholder="Material, SKU o marca…" value={search} onChange={e=>setSearch(e.target.value)}/></label><select aria-label="Categoría de stock" value={category} onChange={e=>setCategory(e.target.value)}><option>Todas</option>{categories.map(c=><option key={c.id}>{c.name}</option>)}</select><select aria-label="Estado del stock" value={status} onChange={e=>setStatus(e.target.value)}>{['Todos','En Stock','Stock Bajo','Agotado'].map(s=><option key={s}>{s}</option>)}</select><button className="secondary" aria-label="Actualizar stock" disabled={loading} onClick={()=>void load()}><RefreshCw size={17}/></button></div>{message&&<p className="admin-success" role="status">{message}</p>}{error&&<p className="admin-error" role="alert">{error} <button onClick={()=>void load()}>Reintentar</button></p>}<nav className="stock-section-nav" aria-label="Secciones de materiales"><button type="button" aria-pressed={section==='all'} onClick={()=>setSection('all')}>Todas las secciones <span>{products.length}</span></button>{stockSections.map(group=><button type="button" key={group.id} aria-pressed={section===group.id} onClick={()=>setSection(group.id)}>{group.name}<span>{products.filter(p=>stockSectionFor(p)===group.id).length}</span></button>)}</nav><div className="stock-groups">{groups.map(group=><section className="stock-group" key={group.id} aria-labelledby={`section-${group.id}`}><header className="stock-group-head"><div><span className="eyebrow">DEPÓSITO / {group.label}</span><h2 id={`section-${group.id}`}>{group.name}</h2><p>{group.description}</p></div><span className="stock-group-count">{group.products.length} {group.products.length===1?'material':'materiales'}</span></header><div className="table-scroll stock-table"><table><thead><tr><th>Material</th><th>Existencias</th><th>Estado</th><th>Último cambio</th><th>Movimientos</th></tr></thead><tbody>{group.products.map(p=><tr key={p.id}><td><div className="stock-material"><img src={`/products/${p.imageId}.jpg`} alt=""/><div><strong>{p.name}</strong><small>{p.sku} · {p.category}</small></div></div></td><td><strong className="stock-number">{p.stock.toLocaleString('es-UY')}</strong><small>{p.unit}</small></td><td><span className={`status ${p.stock===0?'out':p.stock<=10?'low':'good'}`}>{p.stock===0?'Agotado':p.stock<=10?'Stock Bajo':'En Stock'}</span></td><td><small>{date(p.updatedAt)}</small></td><td><div className="stock-actions"><button className="primary" onClick={()=>start(p,'receive')}><Plus size={15}/>Añadir stock</button><button className="secondary" disabled={!p.stock} onClick={()=>start(p,'issue')}><Minus size={15}/>Salida</button><button className="secondary" onClick={()=>start(p,'count')}><ClipboardCheck size={15}/>Conteo</button></div></td></tr>)}</tbody></table></div></section>)}</div>{loading&&<p className="registry-empty" role="status">Consultando existencias…</p>}{!loading&&!rows.length&&!error&&<p className="registry-empty">No hay materiales para esta sección y estos filtros.</p>}<p className="registry-note">Las cantidades iniciales provienen del catálogo de ejemplo. Los movimientos que registres se guardan en la base de datos. Las órdenes de compra actuales no reservan ni descuentan existencias automáticamente.</p><section className="stock-history"><div className="stock-history-head"><h2><History size={20}/>Historial de movimientos</h2><select aria-label="Material del historial" value={historyProduct} onChange={e=>setHistoryProduct(e.target.value)}><option value="all">Todos los materiales</option>{products.map(p=><option value={p.id} key={p.id}>{p.name}</option>)}</select></div><div className="table-scroll"><table><thead><tr><th>Fecha y Hora</th><th>Responsable</th><th>Material</th><th>Tipo</th><th>Cambio</th><th>Antes → Después</th><th>Motivo / referencia</th></tr></thead><tbody>{movements.filter(m=>historyProduct==='all'||m.productId===Number(historyProduct)).map(m=><tr key={m.id}><td><strong>{date(m.createdAt)}</strong></td><td><div><strong>{m.actorName||m.actorEmail.split('@')[0]}</strong><small style={{display:'block',color:'var(--soft)',fontSize:'11px'}}>{m.actorEmail}</small></div></td><td>{products.find(p=>p.id===m.productId)?.name||m.productId}</td><td><span className={`movement-type ${m.type}`}>{labels[m.type]}</span></td><td className={m.delta>0?'stock-positive':'stock-negative'}><strong>{m.delta>0?'+':''}{m.delta}</strong></td><td>{m.before} → <b>{m.after}</b></td><td className="movement-reason">{m.reason}{m.reference&&<small>{m.reference}</small>}</td></tr>)}</tbody></table>{!movements.some(m=>historyProduct==='all'||m.productId===Number(historyProduct))&&<div className="stock-history-empty"><History size={28}/><h3>Los movimientos empiezan acá.</h3><p>Registrá una entrada o un conteo para ver su historial.</p></div>}</div><p className="registry-note">Últimos 100 movimientos. Cada registro conserva la fecha y hora exacta, cantidad anterior, nueva y nombre del responsable.</p></section></main>sable.</p></section></main>
- {pending&&<Dialog label={`${labels[pending.type]} de stock`} onClose={()=>{if(!saving)setPending(null)}}><form className="stock-movement-form" onSubmit={async e=>{e.preventDefault();if(!valid||saving)return;setSaving(true);setActionError('');try{const response=await fetch('/api/admin/stock',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:pending.id,productId:pending.product.id,type:pending.type,amount:n,version:pending.product.version,reason,reference})});const data=await response.json() as {error?:string;products:StockProduct[];movements:StockMovement[]};if(!response.ok)throw Error(data.error||'No pudimos guardar.');setProducts(data.products);setMessage(`${labels[pending.type]} registrada: ${pending.product.name}. Stock actualizado.`);setPending(null);await load()}catch(e){setActionError(e instanceof Error?e.message:'No pudimos guardar el movimiento.')}finally{setSaving(false)}}}><div className="stock-form-head"><span className="eyebrow">BARRACA UNO / {labels[pending.type].toUpperCase()}</span><button type="button" className="icon-button" aria-label="Cerrar movimiento" disabled={saving} onClick={()=>setPending(null)}><X/></button></div><h2>{pending.type==='receive'?'Añadir más stock':pending.type==='issue'?'Registrar salida':'Ajustar por conteo'}</h2><div className="stock-selected"><img src={`/products/${pending.product.imageId}.jpg`} alt=""/><div><strong>{pending.product.name}</strong><small>{pending.product.sku} · Actual: {pending.product.stock} {pending.product.unit}</small></div></div><label>{pending.type==='count'?'Cantidad total contada':pending.type==='receive'?'Cantidad que entra':'Cantidad que sale'}<input autoFocus type="number" min={pending.type==='count'?0:1} max="1000000" step="1" required aria-label="Cantidad del movimiento" value={amount} disabled={saving} onChange={e=>setAmount(e.target.value)}/><small>En {pending.product.unit}. {pending.type==='count'?'Reemplaza el total actual; no suma cantidades.':'Se suma o resta al stock actual.'}</small></label><label>Motivo<input required maxLength={240} value={reason} disabled={saving} placeholder={pending.type==='receive'?'Ej. Recepción de proveedor':pending.type==='issue'?'Ej. Entrega de material':'Ej. Conteo de depósito'} onChange={e=>setReason(e.target.value)}/></label><label>Referencia <span>opcional</span><input maxLength={120} value={reference} disabled={saving} placeholder="Remito, factura o nota interna" onChange={e=>setReference(e.target.value)}/></label><div className="stock-preview"><span>Stock actual <b>{pending.product.stock}</b></span><span>Stock resultante <b className={next<0?'stock-negative':''}>{amount.trim()===''?'—':next}</b></span></div>{pending.type==='count'&&<p className="stock-count-note">Confirmá el total que hay físicamente. Se registrará la diferencia con el stock anterior.</p>}{actionError&&<div className="admin-error" role="alert">{actionError}<button type="button" disabled={saving||loading} onClick={async()=>{const products=await load();const product=products?.find(p=>p.id===pending.product.id);if(product){setPending({...pending,product,id:crypto.randomUUID()});setActionError('Stock recargado. Revisá el resultado y confirmá nuevamente.')}}}>Actualizar existencias</button></div>}<div className="modal-actions"><button type="button" className="secondary" disabled={saving} onClick={()=>setPending(null)}>Cancelar</button><button className="primary" type="submit" disabled={!valid||saving}>{saving?'Guardando…':'Confirmar movimiento'}</button></div></form></Dialog>}
- </div>
+import { useEffect, useState } from 'react';
+import { Boxes, Plus, Minus, ClipboardCheck, Search, RefreshCw, X, ArrowUpRight, History } from 'lucide-react';
+import { BrandLogo } from '../brand-art';
+import { useTheme, ThemeButton } from '../profile-panel';
+import { Dialog } from '../modal';
+import { categories, StockProduct } from '../../lib/catalog';
+import type { StockMovement } from '../../lib/stock';
+import { stockSections, stockSectionFor } from '../../lib/stock-sections';
+
+const normalize = (s: string) => s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+const date = (s: string) => {
+  try {
+    const d = new Date(s);
+    return new Intl.DateTimeFormat('es-UY', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Montevideo'
+    }).format(d) + ' hs';
+  } catch { return s; }
+};
+const labels: Record<string, string> = { receive: 'Entrada', issue: 'Salida', count: 'Conteo' };
+
+export function StockPanel() {
+  const { theme, setTheme } = useTheme();
+  const [products, setProducts] = useState<StockProduct[]>([]);
+  const [movements, setMovements] = useState<StockMovement[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+  const [search, setSearch] = useState('');
+  const [category, setCategory] = useState('Todas');
+  const [status, setStatus] = useState('Todos');
+  const [historyProduct, setHistoryProduct] = useState('all');
+  const [section, setSection] = useState('all');
+  const [pending, setPending] = useState<{ product: StockProduct; type: string; id: string } | null>(null);
+  const [amount, setAmount] = useState('');
+  const [reason, setReason] = useState('');
+  const [reference, setReference] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [actionError, setActionError] = useState('');
+
+  const load = async () => {
+    setLoading(true); setError('');
+    try {
+      const response = await fetch('/api/admin/stock', { cache: 'no-store' });
+      const data = await response.json() as { error?: string; products: StockProduct[]; movements: StockMovement[] };
+      if (!response.ok) throw Error(data.error || 'No pudimos cargar el stock.');
+      setProducts(data.products);
+      setMovements(data.movements);
+      return data.products as StockProduct[];
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No pudimos cargar el stock.');
+      return null;
+    } finally { setLoading(false); }
+  };
+
+  useEffect(() => { void load(); }, []);
+
+  const start = (product: StockProduct, type: string) => {
+    setPending({ product, type, id: crypto.randomUUID() });
+    setAmount(type === 'count' ? String(product.stock) : '');
+    setReason(''); setReference(''); setActionError(''); setMessage('');
+  };
+
+  const filteredProducts = products.filter(p =>
+    normalize(`${p.name} ${p.sku} ${p.brand}`).includes(normalize(search)) &&
+    (category === 'Todas' || p.category === category) &&
+    (status === 'Todos' || (status === 'Agotado' ? p.stock === 0 : status === 'Stock Bajo' ? p.stock > 0 && p.stock <= 10 : p.stock > 10))
+  );
+
+  const groups = stockSections
+    .map(group => ({ ...group, products: filteredProducts.filter(p => stockSectionFor(p) === group.id) }))
+    .filter(group => (section === 'all' || section === group.id) && group.products.length > 0);
+
+  const rows = groups.flatMap(group => group.products);
+  const n = Number(amount);
+  const next = pending
+    ? (pending.type === 'receive' ? pending.product.stock + n : pending.type === 'issue' ? pending.product.stock - n : n)
+    : 0;
+  const valid = !!pending && amount.trim() !== '' && Number.isSafeInteger(n) &&
+    n >= (pending.type === 'count' ? 0 : 1) && n <= 1000000 && next >= 0 && next <= 1000000 &&
+    next !== pending.product.stock && !!reason.trim();
+
+  return (
+    <div className="admin-page stock-page">
+      <header className="account-page-header">
+        <a className="account-logo" href="/"><BrandLogo /></a>
+        <a className="back-catalog" href="/">Volver al catálogo</a>
+        <a className="back-catalog" href="/locales">Nuestros locales</a>
+        <ThemeButton theme={theme} setTheme={setTheme} />
+      </header>
+
+      <main className="admin-main">
+        <div className="admin-title">
+          <div>
+            <div className="eyebrow">BARRACA UNO / EXISTENCIAS</div>
+            <h1>El stock, al día.</h1>
+            <p>Registrá lo que entra, lo que sale y lo que contás en el depósito.</p>
+          </div>
+          <a className="secondary stock-catalog-link" href="/">Ver catálogo <ArrowUpRight size={16} /></a>
+        </div>
+
+        <section className="admin-stats" aria-label="Resumen de stock">
+          <div><Boxes size={20} /><strong>{products.length}</strong><span>Materiales</span></div>
+          <div><strong>{products.filter(p => p.stock > 10).length}</strong><span>Disponibles</span></div>
+          <div><strong>{products.filter(p => p.stock > 0 && p.stock <= 10).length}</strong><span>Stock bajo</span></div>
+          <div><strong>{products.filter(p => p.stock === 0).length}</strong><span>Agotados</span></div>
+        </section>
+
+        <div className="registry-controls stock-controls">
+          <label className="registry-search">
+            <Search size={18} />
+            <input aria-label="Buscar material para stock" placeholder="Material, SKU o marca…" value={search} onChange={e => setSearch(e.target.value)} />
+          </label>
+          <select aria-label="Categoría de stock" value={category} onChange={e => setCategory(e.target.value)}>
+            <option>Todas</option>
+            {categories.map(c => <option key={c.id}>{c.name}</option>)}
+          </select>
+          <select aria-label="Estado del stock" value={status} onChange={e => setStatus(e.target.value)}>
+            {['Todos', 'En Stock', 'Stock Bajo', 'Agotado'].map(s => <option key={s}>{s}</option>)}
+          </select>
+          <button className="secondary" aria-label="Actualizar stock" disabled={loading} onClick={() => void load()}><RefreshCw size={17} /></button>
+        </div>
+
+        {message && <p className="admin-success" role="status">{message}</p>}
+        {error && <p className="admin-error" role="alert">{error} <button onClick={() => void load()}>Reintentar</button></p>}
+
+        <nav className="stock-section-nav" aria-label="Secciones de materiales">
+          <button type="button" aria-pressed={section === 'all'} onClick={() => setSection('all')}>
+            Todas las secciones <span>{products.length}</span>
+          </button>
+          {stockSections.map(group => (
+            <button type="button" key={group.id} aria-pressed={section === group.id} onClick={() => setSection(group.id)}>
+              {group.name}<span>{products.filter(p => stockSectionFor(p) === group.id).length}</span>
+            </button>
+          ))}
+        </nav>
+
+        <div className="stock-groups">
+          {groups.map(group => (
+            <section className="stock-group" key={group.id} aria-labelledby={`section-${group.id}`}>
+              <header className="stock-group-head">
+                <div>
+                  <span className="eyebrow">DEPÓSITO / {group.label}</span>
+                  <h2 id={`section-${group.id}`}>{group.name}</h2>
+                  <p>{group.description}</p>
+                </div>
+                <span className="stock-group-count">{group.products.length} {group.products.length === 1 ? 'material' : 'materiales'}</span>
+              </header>
+              <div className="table-scroll stock-table">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Material</th>
+                      <th>Existencias</th>
+                      <th>Estado</th>
+                      <th>Último cambio</th>
+                      <th>Movimientos</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {group.products.map(p => (
+                      <tr key={p.id}>
+                        <td>
+                          <div className="stock-material">
+                            <img src={`/products/${p.imageId}.jpg`} alt="" />
+                            <div><strong>{p.name}</strong><small>{p.sku} · {p.category}</small></div>
+                          </div>
+                        </td>
+                        <td><strong className="stock-number">{p.stock.toLocaleString('es-UY')}</strong><small>{p.unit}</small></td>
+                        <td>
+                          <span className={`status ${p.stock === 0 ? 'out' : p.stock <= 10 ? 'low' : 'good'}`}>
+                            {p.stock === 0 ? 'Agotado' : p.stock <= 10 ? 'Stock Bajo' : 'En Stock'}
+                          </span>
+                        </td>
+                        <td><small>{date(p.updatedAt)}</small></td>
+                        <td>
+                          <div className="stock-actions">
+                            <button className="primary" onClick={() => start(p, 'receive')}><Plus size={15} />Añadir stock</button>
+                            <button className="secondary" disabled={!p.stock} onClick={() => start(p, 'issue')}><Minus size={15} />Salida</button>
+                            <button className="secondary" onClick={() => start(p, 'count')}><ClipboardCheck size={15} />Conteo</button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          ))}
+        </div>
+
+        {loading && <p className="registry-empty" role="status">Consultando existencias…</p>}
+        {!loading && !rows.length && !error && <p className="registry-empty">No hay materiales para esta sección y estos filtros.</p>}
+
+        <p className="registry-note">
+          Las cantidades iniciales provienen del catálogo de ejemplo. Los movimientos que registres se guardan en la base de datos.
+          Las órdenes de compra actuales no reservan ni descuentan existencias automáticamente.
+        </p>
+
+        <section className="stock-history">
+          <div className="stock-history-head">
+            <h2><History size={20} />Historial de movimientos</h2>
+            <select aria-label="Material del historial" value={historyProduct} onChange={e => setHistoryProduct(e.target.value)}>
+              <option value="all">Todos los materiales</option>
+              {products.map(p => <option value={p.id} key={p.id}>{p.name}</option>)}
+            </select>
+          </div>
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Fecha y Hora</th>
+                  <th>Responsable</th>
+                  <th>Material</th>
+                  <th>Tipo</th>
+                  <th>Cambio</th>
+                  <th>Antes → Después</th>
+                  <th>Motivo / referencia</th>
+                </tr>
+              </thead>
+              <tbody>
+                {movements
+                  .filter(m => historyProduct === 'all' || m.productId === Number(historyProduct))
+                  .map(m => (
+                    <tr key={m.id}>
+                      <td><strong>{date(m.createdAt)}</strong></td>
+                      <td>
+                        <div>
+                          <strong>{m.actorName || m.actorEmail.split('@')[0]}</strong>
+                          <small style={{ display: 'block', color: 'var(--soft)', fontSize: '11px' }}>{m.actorEmail}</small>
+                        </div>
+                      </td>
+                      <td>{products.find(p => p.id === m.productId)?.name || m.productId}</td>
+                      <td><span className={`movement-type ${m.type}`}>{labels[m.type]}</span></td>
+                      <td className={m.delta > 0 ? 'stock-positive' : 'stock-negative'}>
+                        <strong>{m.delta > 0 ? '+' : ''}{m.delta}</strong>
+                      </td>
+                      <td>{m.before} → <b>{m.after}</b></td>
+                      <td className="movement-reason">{m.reason}{m.reference && <small>{m.reference}</small>}</td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+            {!movements.some(m => historyProduct === 'all' || m.productId === Number(historyProduct)) && (
+              <div className="stock-history-empty">
+                <History size={28} />
+                <h3>Los movimientos empiezan acá.</h3>
+                <p>Registrá una entrada o un conteo para ver su historial.</p>
+              </div>
+            )}
+          </div>
+          <p className="registry-note">Últimos 100 movimientos. Cada registro conserva la fecha y hora exacta, cantidad anterior, nueva y nombre del responsable.</p>
+        </section>
+      </main>
+
+      {pending && (
+        <Dialog label={`${labels[pending.type]} de stock`} onClose={() => { if (!saving) setPending(null); }}>
+          <form
+            className="stock-movement-form"
+            onSubmit={async e => {
+              e.preventDefault();
+              if (!valid || saving) return;
+              setSaving(true); setActionError('');
+              try {
+                const response = await fetch('/api/admin/stock', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ id: pending.id, productId: pending.product.id, type: pending.type, amount: n, version: pending.product.version, reason, reference })
+                });
+                const data = await response.json() as { error?: string; products: StockProduct[]; movements: StockMovement[] };
+                if (!response.ok) throw Error(data.error || 'No pudimos guardar.');
+                setProducts(data.products);
+                setMessage(`${labels[pending.type]} registrada: ${pending.product.name}. Stock actualizado.`);
+                setPending(null);
+                await load();
+              } catch (e) {
+                setActionError(e instanceof Error ? e.message : 'No pudimos guardar el movimiento.');
+              } finally { setSaving(false); }
+            }}
+          >
+            <div className="stock-form-head">
+              <span className="eyebrow">BARRACA UNO / {labels[pending.type].toUpperCase()}</span>
+              <button type="button" className="icon-button" aria-label="Cerrar movimiento" disabled={saving} onClick={() => setPending(null)}><X /></button>
+            </div>
+            <h2>{pending.type === 'receive' ? 'Añadir más stock' : pending.type === 'issue' ? 'Registrar salida' : 'Ajustar por conteo'}</h2>
+            <div className="stock-selected">
+              <img src={`/products/${pending.product.imageId}.jpg`} alt="" />
+              <div>
+                <strong>{pending.product.name}</strong>
+                <small>{pending.product.sku} · Actual: {pending.product.stock} {pending.product.unit}</small>
+              </div>
+            </div>
+            <label>
+              {pending.type === 'count' ? 'Cantidad total contada' : pending.type === 'receive' ? 'Cantidad que entra' : 'Cantidad que sale'}
+              <input
+                autoFocus type="number"
+                min={pending.type === 'count' ? 0 : 1}
+                max="1000000" step="1" required
+                aria-label="Cantidad del movimiento"
+                value={amount} disabled={saving}
+                onChange={e => setAmount(e.target.value)}
+              />
+              <small>En {pending.product.unit}. {pending.type === 'count' ? 'Reemplaza el total actual; no suma cantidades.' : 'Se suma o resta al stock actual.'}</small>
+            </label>
+            <label>
+              Motivo
+              <input
+                required maxLength={240} value={reason} disabled={saving}
+                placeholder={pending.type === 'receive' ? 'Ej. Recepción de proveedor' : pending.type === 'issue' ? 'Ej. Entrega de material' : 'Ej. Conteo de depósito'}
+                onChange={e => setReason(e.target.value)}
+              />
+            </label>
+            <label>
+              Referencia <span>opcional</span>
+              <input maxLength={120} value={reference} disabled={saving} placeholder="Remito, factura o nota interna" onChange={e => setReference(e.target.value)} />
+            </label>
+            <div className="stock-preview">
+              <span>Stock actual <b>{pending.product.stock}</b></span>
+              <span>Stock resultante <b className={next < 0 ? 'stock-negative' : ''}>{amount.trim() === '' ? '—' : next}</b></span>
+            </div>
+            {pending.type === 'count' && <p className="stock-count-note">Confirmá el total que hay físicamente. Se registrará la diferencia con el stock anterior.</p>}
+            {actionError && (
+              <div className="admin-error" role="alert">
+                {actionError}
+                <button
+                  type="button" disabled={saving || loading}
+                  onClick={async () => {
+                    const products = await load();
+                    const product = products?.find(p => p.id === pending.product.id);
+                    if (product) {
+                      setPending({ ...pending, product, id: crypto.randomUUID() });
+                      setActionError('Stock recargado. Revisá el resultado y confirmá nuevamente.');
+                    }
+                  }}
+                >Actualizar existencias</button>
+              </div>
+            )}
+            <div className="modal-actions">
+              <button type="button" className="secondary" disabled={saving} onClick={() => setPending(null)}>Cancelar</button>
+              <button className="primary" type="submit" disabled={!valid || saving}>{saving ? 'Guardando…' : 'Confirmar movimiento'}</button>
+            </div>
+          </form>
+        </Dialog>
+      )}
+    </div>
+  );
 }
