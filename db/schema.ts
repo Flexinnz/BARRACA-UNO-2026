@@ -67,3 +67,33 @@ export const userSessions=sqliteTable('user_sessions',{
   expiresAt:text('expires_at').notNull(),
   createdAt:text('created_at').notNull(),
 });
+
+export const orders=sqliteTable('orders',{
+  id:text('id').primaryKey(),
+  userId:text('user_id').notNull(),
+  userEmail:text('user_email').notNull(),
+  userName:text('user_name').notNull().default(''),
+  status:text('status').notNull().default('pending'),
+  paymentMethod:text('payment_method').notNull().default(''),
+  shippingAddress:text('shipping_address').notNull().default(''),
+  shippingCity:text('shipping_city').notNull().default(''),
+  shippingPhone:text('shipping_phone').notNull().default(''),
+  notes:text('notes').notNull().default(''),
+  subtotal:integer('subtotal').notNull().default(0),
+  tax:integer('tax').notNull().default(0),
+  total:integer('total').notNull().default(0),
+  createdAt:text('created_at').notNull(),
+  updatedAt:text('updated_at').notNull(),
+});
+
+export const orderItems=sqliteTable('order_items',{
+  id:integer('id').primaryKey({autoIncrement:true}),
+  orderId:text('order_id').notNull(),
+  productId:integer('product_id').notNull(),
+  productName:text('product_name').notNull(),
+  productSku:text('product_sku').notNull(),
+  productUnit:text('product_unit').notNull(),
+  quantity:integer('quantity').notNull(),
+  unitPrice:integer('unit_price').notNull(),
+  lineTotal:integer('line_total').notNull(),
+});
