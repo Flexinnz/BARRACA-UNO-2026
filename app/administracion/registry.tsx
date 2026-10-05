@@ -302,7 +302,7 @@ export function AccountRegistry() {
           )}
         </div>
 
-        {/* ── Email Notifications (Resend) Section ── */}
+        {/* ── Email Notifications (Brevo) Section ── */}
         <section
           style={{
             margin: '32px 0 20px',
@@ -316,7 +316,7 @@ export function AccountRegistry() {
             <div>
               <h2 style={{ margin: '0 0 6px', fontSize: '18px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Mail size={20} color="var(--accent)" />
-                Notificaciones por Correo Electrónico (Resend)
+                Notificaciones por Correo Electrónico (Brevo)
               </h2>
               <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-soft)' }}>
                 Envío automático de confirmaciones de compra, cambios de estado de pedidos y bienvenida a clientes.
@@ -359,42 +359,53 @@ export function AccountRegistry() {
             </div>
           </div>
 
+          {/* Brevo setup guide */}
+          <div style={{ marginBottom: '16px', padding: '14px 16px', background: 'rgba(59,130,246,0.07)', borderRadius: '10px', border: '1px solid rgba(59,130,246,0.2)', fontSize: '12px', lineHeight: '1.7' }}>
+            <strong style={{ color: '#3b82f6', fontSize: '13px' }}>🚀 Cómo activar Brevo (3 pasos, gratis):</strong>
+            <ol style={{ margin: '8px 0 0 16px', padding: 0 }}>
+              <li>Registrate en <a href="https://app.brevo.com" target="_blank" rel="noreferrer" style={{ color: 'var(--accent)', fontWeight: 600 }}>app.brevo.com</a> (300 emails/día sin tarjeta).</li>
+              <li>En tu cuenta Brevo: <strong>Perfil → SMTP &amp; API → API Keys → Generar nueva clave</strong> y pegala abajo.</li>
+              <li>En Brevo: <strong>Senders &amp; IPs → Add a Sender</strong> → verificá tu Gmail con el link que te mandan. Ponelo abajo como remitente.</li>
+            </ol>
+            <p style={{ margin: '8px 0 0', color: 'var(--text-soft)' }}>✅ Con esto los correos llegan a <strong>cualquier comprador</strong> (Gmail, Outlook, incógnito, etc.) sin dominio propio.</p>
+          </div>
+
           <form onSubmit={handleSaveEmailConfig} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '16px' }}>
             <div>
               <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '6px' }}>
-                Resend API Key (re_...)
+                Brevo API Key
               </label>
               <div className="login-input" style={{ width: '100%' }}>
                 <KeyRound size={16} />
                 <input
                   type="password"
-                  placeholder={emailConfig?.maskedKey || 're_123456789_abcdef...'}
+                  placeholder={emailConfig?.maskedKey || 'xkeysib-...'}
                   value={apiKeyInput}
                   onChange={(e) => setApiKeyInput(e.target.value)}
                   disabled={savingEmail}
                 />
               </div>
               <small style={{ color: 'var(--text-soft)', fontSize: '11px', display: 'block', marginTop: '4px' }}>
-                Obtené tu clave gratuita en <a href="https://resend.com/api-keys" target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>resend.com/api-keys</a>.
+                Generá tu clave en <a href="https://app.brevo.com/settings/keys/api" target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>app.brevo.com → SMTP &amp; API → API Keys</a>.
               </small>
             </div>
 
             <div>
               <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '6px' }}>
-                Remitente (From)
+                Tu correo remitente (verificado en Brevo)
               </label>
               <div className="login-input" style={{ width: '100%' }}>
                 <Mail size={16} />
                 <input
                   type="text"
-                  placeholder="Barraca Uno <onboarding@resend.dev>"
+                  placeholder="tu.gmail@gmail.com"
                   value={fromEmailInput}
                   onChange={(e) => setFromEmailInput(e.target.value)}
                   disabled={savingEmail}
                 />
               </div>
               <small style={{ color: 'var(--text-soft)', fontSize: '11px', display: 'block', marginTop: '4px' }}>
-                Para pruebas gratuitas usá <code>Barraca Uno &lt;onboarding@resend.dev&gt;</code>. Si verificás tu dominio en Resend, podés usar tu propio correo.
+                Puede ser tu Gmail personal. Solo necesitás verificarlo una vez en Brevo (Senders &amp; IPs).
               </small>
             </div>
 
@@ -447,13 +458,13 @@ export function AccountRegistry() {
             {emailError && <p className="admin-error" style={{ marginTop: '10px', marginBottom: 0 }}>{emailError}</p>}
           </div>
 
-          {/* Sandbox explanation note */}
-          <div style={{ marginTop: '14px', padding: '12px', background: 'rgba(245, 158, 11, 0.08)', borderRadius: '8px', border: '1px solid rgba(245, 158, 11, 0.2)', fontSize: '12px', lineHeight: '1.5' }}>
-            <strong style={{ color: '#d97706', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
-              <AlertCircle size={15} /> ¿Por qué no le llegan correos a personas o cuentas en incógnito?
+          {/* Brevo advantage note */}
+          <div style={{ marginTop: '14px', padding: '12px', background: 'rgba(16,185,129,0.07)', borderRadius: '8px', border: '1px solid rgba(16,185,129,0.2)', fontSize: '12px', lineHeight: '1.5' }}>
+            <strong style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+              <CheckCircle2 size={15} /> ¿Por qué Brevo y no Resend?
             </strong>
             <span style={{ color: 'var(--text-soft)' }}>
-              Por políticas de seguridad de Resend, cuando usás el remitente de prueba <code>onboarding@resend.dev</code>, Resend <strong>únicamente entrega correos a la dirección con la que creaste tu cuenta de Resend</strong>. Si un cliente compra con un correo diferente o desde incógnito, Resend bloquea el envío al cliente (a menos que agregues tu dominio en <a href="https://resend.com/domains" target="_blank" rel="noreferrer" style={{ color: 'var(--accent)', fontWeight: 600 }}>resend.com/domains</a>). Como solución, el sistema ahora siempre envía una <strong>copia automática al administrador</strong> con cada compra.
+              Resend requiere un dominio propio verificado para enviar a correos externos. Con Brevo, alcanza con verificar tu Gmail como remitente y los correos llegan a <strong>cualquier comprador</strong> — incógnito, Gmail, Outlook, lo que sea — sin necesitar un dominio propio. El plan gratuito incluye 300 emails/día sin tarjeta de crédito.
             </span>
           </div>
 
