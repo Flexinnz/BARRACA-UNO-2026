@@ -30,7 +30,7 @@ function useCart(products: Product[]) {
   return { items, add, update, remove, clear: () => setItems([]), subtotal, tax: Math.round(subtotal * .22), total: subtotal + Math.round(subtotal * .22), count: items.reduce((s, i) => s + i.quantity, 0) };
 }
 
-const normalize = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+const normalize = (s: string) => s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
 
 function useFilters(products: Product[]) {
   const [search, setSearch] = useState(''), [category, setCategory] = useState('Todas'), [stock, setStock] = useState('Todos'), [sort, setSort] = useState('Nombre (A-Z)');

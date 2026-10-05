@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import {useEffect,useState} from 'react';
 import {Boxes,Plus,Minus,ClipboardCheck,Search,RefreshCw,X,ArrowUpRight,History} from 'lucide-react';
 import {BrandLogo} from '../brand-art';
@@ -7,7 +7,7 @@ import {Dialog} from '../modal';
 import {categories,StockProduct} from '../../lib/catalog';
 import type {StockMovement} from '../../lib/stock';
 import {stockSections,stockSectionFor} from '../../lib/stock-sections';
-const normalize=(s:string)=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+const normalize=(s:string)=>s.normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase();
 const date=(s:string)=>{try{const d=new Date(s);return new Intl.DateTimeFormat('es-UY',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'America/Montevideo'}).format(d)+' hs'}catch{return s}};
 const labels:Record<string,string>={receive:'Entrada',issue:'Salida',count:'Conteo'};
 export function StockPanel(){const {theme,setTheme}=useTheme();const [products,setProducts]=useState<StockProduct[]>([]),[movements,setMovements]=useState<StockMovement[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState(''),[message,setMessage]=useState(''),[search,setSearch]=useState(''),[category,setCategory]=useState('Todas'),[status,setStatus]=useState('Todos'),[historyProduct,setHistoryProduct]=useState('all'),[section,setSection]=useState('all');
