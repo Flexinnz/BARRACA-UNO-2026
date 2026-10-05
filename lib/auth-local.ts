@@ -1,6 +1,14 @@
+import {env} from 'cloudflare:workers';
 import {profileDb} from '../db/profiles';
+import {signSessionJwt,verifySessionJwt} from './jwt';
 
 export const SESSION_COOKIE_NAME = 'barraca_session';
+
+function sessionSecrets(): string[] {
+  const current = env.BARRACA_JWT_SECRET?.trim();
+  if (!current) throw new Error('La firma de acceso no está configurada.');
+  return [current, env.BARRACA_JWT_PREVIOUS_SECRET?.trim()].filter((value): value is string => !!value);
+}
 
 function bytesToHex(bytes: Uint8Array): string {
   return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
@@ -31,7 +39,12 @@ export async function hashPassword(password: string, saltHex?: string): Promise<
 
 export async function verifyPassword(password: string, expectedHash: string, saltHex: string): Promise<boolean> {
   const { hash } = await hashPassword(password, saltHex);
-  return hash === expectedHash;
+  if (hash.length !== expectedHash.length) return false;
+  let difference = 0;
+  for (let index = 0; index < hash.length; index++) {
+    difference |= hash.charCodeAt(index) ^ expectedHash.charCodeAt(index);
+  }
+  return difference === 0;
 }
 
 export async function createLocalUser(
@@ -117,36 +130,34 @@ export async function authenticateLocalUser(email: string, password: string): Pr
 }
 
 export async function createSession(userId: string): Promise<string> {
-  const token = bytesToHex(crypto.getRandomValues(new Uint8Array(32)));
-  const now = new Date();
-  const expires = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
   const db = profileDb();
-
-  await db.prepare('INSERT INTO user_sessions (token, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)')
-    .bind(token, userId, expires, now.toISOString()).run();
-
-  return token;
+  const account = await db.prepare('SELECT auth_version AS authVersion,status FROM accounts WHERE user_id = ?')
+    .bind(userId)
+    .first<{authVersion:number;status:string}>();
+  if (!account || account.status !== 'active') throw new Error('La cuenta no está habilitada.');
+  return signSessionJwt({userId,authVersion:account.authVersion},sessionSecrets()[0]);
 }
 
 export async function getSessionUser(token: string): Promise<{ userId: string; email: string; displayName: string; fullName: string } | null> {
   if (!token || typeof token !== 'string') return null;
+  const claims = await verifySessionJwt(token,sessionSecrets());
+  if (!claims) return null;
   const db = profileDb();
-  const now = new Date().toISOString();
-
   const session = await db.prepare(`
-    SELECT s.user_id AS userId, a.email, a.status, COALESCE(p.display_name, a.email) AS displayName
-    FROM user_sessions s
-    JOIN accounts a ON a.user_id = s.user_id
-    LEFT JOIN profiles p ON p.user_id = s.user_id
-    WHERE s.token = ? AND s.expires_at > ?
-  `).bind(token, now).first<{
+    SELECT a.user_id AS userId, a.email, a.status, a.auth_version AS authVersion,
+           COALESCE(p.display_name, a.email) AS displayName
+    FROM accounts a
+    LEFT JOIN profiles p ON p.user_id = a.user_id
+    WHERE a.user_id = ?
+  `).bind(claims.sub).first<{
     userId: string;
     email: string;
     status: string;
+    authVersion: number;
     displayName: string;
   }>();
 
-  if (!session || session.status !== 'active') return null;
+  if (!session || session.status !== 'active' || session.authVersion !== claims.ver) return null;
 
   return {
     userId: session.userId,
@@ -156,10 +167,18 @@ export async function getSessionUser(token: string): Promise<{ userId: string; e
   };
 }
 
-export async function deleteSession(token: string): Promise<void> {
-  if (!token) return;
+export async function revokeUserSessions(userId: string): Promise<void> {
   const db = profileDb();
-  await db.prepare('DELETE FROM user_sessions WHERE token = ?').bind(token).run();
+  await db.prepare('UPDATE accounts SET auth_version = auth_version + 1, updated_at = ? WHERE user_id = ?')
+    .bind(new Date().toISOString(),userId)
+    .run();
+}
+
+export async function hasLocalCredentials(userId: string): Promise<boolean> {
+  const row = await profileDb().prepare('SELECT 1 AS present FROM user_credentials WHERE user_id = ?')
+    .bind(userId)
+    .first<{present:number}>();
+  return row?.present === 1;
 }
 
 export async function changeUserPassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
@@ -172,10 +191,13 @@ export async function changeUserPassword(userId: string, currentPassword: string
   if (!valid) {
     throw new Error('La contraseña actual es incorrecta.');
   }
-  if (!newPassword || newPassword.length < 6) {
-    throw new Error('La nueva contraseña debe tener al menos 6 caracteres.');
+  if (!newPassword || newPassword.length < 10) {
+    throw new Error('La nueva contraseña debe tener al menos 10 caracteres.');
   }
   const { hash, salt } = await hashPassword(newPassword);
-  await db.prepare('UPDATE user_credentials SET password_hash = ?, salt = ? WHERE user_id = ?').bind(hash, salt, userId).run();
+  await db.batch([
+    db.prepare('UPDATE user_credentials SET password_hash = ?, salt = ? WHERE user_id = ?').bind(hash, salt, userId),
+    db.prepare('UPDATE accounts SET auth_version = auth_version + 1, updated_at = ? WHERE user_id = ?')
+      .bind(new Date().toISOString(),userId),
+  ]);
 }
-

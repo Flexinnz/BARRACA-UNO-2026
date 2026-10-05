@@ -22,6 +22,7 @@ export const accounts=sqliteTable('accounts',{
  createdAt:text('created_at').notNull(),
  lastSeenAt:text('last_seen_at').notNull(),
  updatedAt:text('updated_at').notNull(),
+ authVersion:integer('auth_version').notNull().default(0),
 });
 export const accountEvents=sqliteTable('account_events',{
  id:integer('id').primaryKey({autoIncrement:true}),
@@ -58,13 +59,6 @@ export const userCredentials=sqliteTable('user_credentials',{
   userId:text('user_id').primaryKey(),
   passwordHash:text('password_hash').notNull(),
   salt:text('salt').notNull(),
-  createdAt:text('created_at').notNull(),
-});
-
-export const userSessions=sqliteTable('user_sessions',{
-  token:text('token').primaryKey(),
-  userId:text('user_id').notNull(),
-  expiresAt:text('expires_at').notNull(),
   createdAt:text('created_at').notNull(),
 });
 

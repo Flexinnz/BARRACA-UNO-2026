@@ -1,4 +1,4 @@
-import { headers, cookies } from "next/headers";
+import { cookies } from "next/headers";
 import { authClient, authConfig, safeReturn } from '../lib/supabase';
 import { profileDb } from '../db/profiles';
 import { redirect } from "next/navigation";
@@ -11,15 +11,8 @@ export type ChatGPTUser = {
   fullName: string | null;
 };
 
-const USER_ID_HEADER = "oai-authenticated-user-id";
-const USER_EMAIL_HEADER = "oai-authenticated-user-email";
-const USER_FULL_NAME_HEADER = "oai-authenticated-user-full-name";
-const USER_FULL_NAME_ENCODING_HEADER =
-  "oai-authenticated-user-full-name-encoding";
-const PERCENT_ENCODED_UTF8 = "percent-encoded-utf-8";
-
 export async function getChatGPTUser(): Promise<ChatGPTUser | null> {
-  // 1. Check native database session cookie
+  // Every application request trusts only the app-issued, signed JWT.
   try {
     const store = await cookies();
     const token = store.get(SESSION_COOKIE_NAME)?.value;
@@ -38,7 +31,12 @@ export async function getChatGPTUser(): Promise<ChatGPTUser | null> {
     console.error('Session lookup failed', e);
   }
 
-  // 2. Check Supabase Auth if configured
+  return null;
+}
+
+// Supabase is an identity provider. Login and callback routes use this once,
+// then exchange the verified identity for the application's own signed JWT.
+export async function getProviderUser(): Promise<ChatGPTUser | null> {
   if (authConfig()) {
     try {
       const client = await authClient();
@@ -63,29 +61,6 @@ export async function getChatGPTUser(): Promise<ChatGPTUser | null> {
       }
     } catch {}
   }
-
-  // 3. Sites proxy headers (only if real, ignore seedy mock)
-  try {
-    const requestHeaders = await headers();
-    const userId = requestHeaders.get(USER_ID_HEADER);
-    const email = requestHeaders.get(USER_EMAIL_HEADER);
-    if (userId && email && email !== 'seedy@sites.test') {
-      const encodedFullName = requestHeaders.get(USER_FULL_NAME_HEADER);
-      const fullName =
-        encodedFullName &&
-        requestHeaders.get(USER_FULL_NAME_ENCODING_HEADER) === PERCENT_ENCODED_UTF8
-          ? safeDecodeURIComponent(encodedFullName)
-          : null;
-
-      return {
-        userId,
-        displayName: fullName ?? email,
-        email,
-        fullName,
-      };
-    }
-  } catch {}
-
   return null;
 }
 
@@ -104,12 +79,4 @@ export function chatGPTSignInPath(returnTo: string): string {
 
 export function chatGPTSignOutPath(returnTo = "/"): string {
   return `/auth/logout?return_to=${encodeURIComponent(safeReturn(returnTo))}`;
-}
-
-function safeDecodeURIComponent(value: string): string | null {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return null;
-  }
 }

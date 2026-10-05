@@ -1,11 +1,22 @@
 import {cookies} from 'next/headers';
 import {authClient,authConfig,safeReturn,siteOrigin} from '../../../lib/supabase';
-import {getChatGPTUser} from '../../chatgpt-auth';
+import {getChatGPTUser,getProviderUser} from '../../chatgpt-auth';
 import {ensureAccount,accountEnabled} from '../../../lib/accounts';
-import {createLocalUser,authenticateLocalUser,createSession,deleteSession,changeUserPassword,SESSION_COOKIE_NAME} from '../../../lib/auth-local';
+import {createLocalUser,authenticateLocalUser,createSession,changeUserPassword,hasLocalCredentials,revokeUserSessions,SESSION_COOKIE_NAME} from '../../../lib/auth-local';
+import {SESSION_TTL_SECONDS} from '../../../lib/jwt';
 
 export const dynamic='force-dynamic';
 const json=(body:unknown,status=200)=>Response.json(body,{status,headers:{'Cache-Control':'no-store'}});
+type CookieStore=Awaited<ReturnType<typeof cookies>>;
+function setSessionCookie(store:CookieStore,token:string,secure:boolean){
+  store.set(SESSION_COOKIE_NAME,token,{
+    httpOnly:true,
+    sameSite:'lax',
+    path:'/',
+    maxAge:SESSION_TTL_SECONDS,
+    secure,
+  });
+}
 
 export async function POST(request:Request){
   let raw='';
@@ -63,15 +74,13 @@ export async function POST(request:Request){
   if(!['reset','logout','change-password'].includes(action!)&&(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||email.length>254)){
     return json({error:'Ingresá un correo válido.'},400);
   }
-  if(['login','register','reset'].includes(action!)&&(!password||password.length>128||(action!=='login'&&password.length<6))){
-    return json({error:'La contraseña debe tener al menos 6 caracteres.'},400);
+  if(['login','register','reset'].includes(action!)&&(!password||password.length>128||(action!=='login'&&password.length<10))){
+    return json({error:'La contraseña debe tener al menos 10 caracteres.'},400);
   }
 
   try{
     if(action==='logout'){
       const store=await cookies();
-      const token=store.get(SESSION_COOKIE_NAME)?.value;
-      if(token)await deleteSession(token);
       store.delete(SESSION_COOKIE_NAME);
       store.delete('__sites_local_auth');
       if(authConfig()){
@@ -120,10 +129,11 @@ export async function POST(request:Request){
         });
         if(error)return json({error:error.status===429?'Demasiados intentos. Esperá unos minutos.':'No pudimos crear la cuenta. Revisá tus datos o probá iniciar sesión.'},error.status===429?429:400);
         if(!data.session)return json({message:'Revisá tu correo y confirmá la cuenta. Luego podrás iniciar sesión.'});
-        const user=await getChatGPTUser();
+        const user=await getProviderUser();
         if(!user){await client.auth.signOut();return json({error:'Debés confirmar tu correo antes de entrar.'},403)}
         const account=await ensureAccount(user);
         if(!accountEnabled(account,user)){await client.auth.signOut();return json({error:'Esta cuenta está deshabilitada por la empresa.'},403)}
+        setSessionCookie(await cookies(),await createSession(user.userId),origin.startsWith('https:'));
         return json({redirect:safeReturn(input.returnTo)});
       }
 
@@ -131,13 +141,7 @@ export async function POST(request:Request){
       const user=await createLocalUser(input.name.trim(),email,password,company,phone,rut);
       const token=await createSession(user.userId);
       const store=await cookies();
-      store.set(SESSION_COOKIE_NAME,token,{
-        httpOnly:true,
-        sameSite:'lax',
-        path:'/',
-        maxAge:30*24*60*60,
-        secure:origin.startsWith('https:'),
-      });
+      setSessionCookie(store,token,origin.startsWith('https:'));
       return json({redirect:safeReturn(input.returnTo)||'/'});
     }
 
@@ -150,6 +154,10 @@ export async function POST(request:Request){
         const client=await authClient();
         const {error}=await client.auth.updateUser({password});
         if(error)return json({error:'No pudimos cambiar la contraseña. Probá una contraseña diferente.'},400);
+        await revokeUserSessions(user.userId);
+        setSessionCookie(await cookies(),await createSession(user.userId),origin.startsWith('https:'));
+      }else{
+        return json({error:'La recuperación por correo no está configurada.'},400);
       }
       return json({redirect:'/cuenta'});
     }
@@ -160,19 +168,28 @@ export async function POST(request:Request){
       const currentPassword=typeof input.currentPassword==='string'?input.currentPassword:'';
       const newPassword=typeof input.newPassword==='string'?input.newPassword:'';
       if(!currentPassword)return json({error:'Ingresá tu contraseña actual.'},400);
-      if(!newPassword||newPassword.length<6||newPassword.length>128)return json({error:'La nueva contraseña debe tener entre 6 y 128 caracteres.'},400);
+      if(!newPassword||newPassword.length<10||newPassword.length>128)return json({error:'La nueva contraseña debe tener entre 10 y 128 caracteres.'},400);
       if(currentPassword===newPassword)return json({error:'La nueva contraseña debe ser diferente a la actual.'},400);
 
+      let changedWithProvider=false;
       if(authConfig()){
-        try{
-          const client=await authClient();
-          await client.auth.updateUser({password:newPassword});
-        }catch(e){
-          console.warn('Supabase password update failed',e);
+        const client=await authClient();
+        const {error:signInError}=await client.auth.signInWithPassword({email:user.email,password:currentPassword});
+        if(!signInError){
+          const {error:updateError}=await client.auth.updateUser({password:newPassword});
+          if(updateError)return json({error:'No pudimos cambiar la contraseña. Probá una contraseña diferente.'},400);
+          changedWithProvider=true;
         }
       }
 
-      await changeUserPassword(user.userId,currentPassword,newPassword);
+      if(await hasLocalCredentials(user.userId)){
+        await changeUserPassword(user.userId,currentPassword,newPassword);
+      }else if(changedWithProvider){
+        await revokeUserSessions(user.userId);
+      }else{
+        return json({error:'La contraseña actual es incorrecta.'},400);
+      }
+      setSessionCookie(await cookies(),await createSession(user.userId),origin.startsWith('https:'));
       return json({ok:true,message:'Tu contraseña fue actualizada con éxito.'});
     }
 
@@ -182,10 +199,11 @@ export async function POST(request:Request){
           const client=await authClient();
           const {error}=await client.auth.signInWithPassword({email,password});
           if(!error){
-            const user=await getChatGPTUser();
+            const user=await getProviderUser();
             if(user){
               const account=await ensureAccount(user);
               if(accountEnabled(account,user)){
+                setSessionCookie(await cookies(),await createSession(user.userId),origin.startsWith('https:'));
                 return json({redirect:safeReturn(input.returnTo)||'/'});
               }
             }
@@ -197,13 +215,7 @@ export async function POST(request:Request){
       const user=await authenticateLocalUser(email,password);
       const token=await createSession(user.userId);
       const store=await cookies();
-      store.set(SESSION_COOKIE_NAME,token,{
-        httpOnly:true,
-        sameSite:'lax',
-        path:'/',
-        maxAge:30*24*60*60,
-        secure:origin.startsWith('https:'),
-      });
+      setSessionCookie(store,token,origin.startsWith('https:'));
       return json({redirect:safeReturn(input.returnTo)||'/'});
     }
 

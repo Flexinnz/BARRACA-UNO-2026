@@ -25,7 +25,7 @@ El catálogo continúa usando datos de ejemplo; las órdenes no se guardan ni se
 - /guia: guía dentro de la aplicación.
 
 ## Desarrollo local
-La vista de desarrollo usa una identidad simulada de Sites, separada de la identidad real de producción. No copies datos privados de producción para probar.
+La vista de desarrollo usa una identidad simulada de Sites, separada de la identidad real de producción. No copies datos privados de producción para probar. El acceso local emite una cookie HttpOnly con un JWT HS256 firmado por `BARRACA_JWT_SECRET`; configurá un secreto aleatorio de al menos 32 bytes en `.dev.vars`.
 
 ```powershell
 pnpm install
@@ -55,7 +55,9 @@ El registro muestra correo, nombre, empresa, estado, fecha de registro y último
 - Restaurar una cuenta eliminada devuelve acceso para crear un perfil nuevo; no recupera los datos borrados.
 - Las cuentas administradoras están protegidas contra bloqueo y eliminación.
 
-BARRACA_ADMIN_EMAILS es una variable secreta del servidor con los correos autorizados, separados por comas. No va en el cliente ni se puede editar desde el perfil. Para probar localmente, copiá .env.example a .dev.vars y poné únicamente los correos simulados que usarás. Aplicá todas las migraciones nuevas además de la inicial. Para la vista compilada de Wrangler, copiá .dev.vars a dist/server/.dev.vars después del build. Nunca publiques .dev.vars ni incluyas credenciales en Git.
+BARRACA_ADMIN_EMAILS es una variable secreta del servidor con los correos autorizados, separados por comas. `BARRACA_JWT_SECRET` firma las sesiones y debe tener al menos 32 bytes aleatorios. `BARRACA_JWT_PREVIOUS_SECRET` es opcional y permite una rotación gradual: se acepta para verificar tokens existentes, pero los nuevos siempre se firman con el secreto actual. Ninguna de estas variables va en el cliente ni se puede editar desde el perfil. Para probar localmente, copiá .env.example a .dev.vars y completá valores locales. Aplicá todas las migraciones nuevas además de la inicial. Para la vista compilada de Wrangler, copiá .dev.vars a dist/server/.dev.vars después del build. Nunca publiques .dev.vars ni incluyas credenciales en Git.
+
+Las sesiones JWT incluyen emisor, audiencia, cuenta, fecha de emisión, vigencia, identificador aleatorio y versión de autenticación. La firma se valida antes de consultar la cuenta. Cambiar la contraseña incrementa la versión de autenticación e invalida todos los JWT anteriores de esa cuenta.
 
 ## Galería de materiales
 Tocá una foto en tarjetas, tabla o la orden para ampliarla. La galería trae miniaturas, flechas y zoom de 100% a 300%; desplazá la foto al acercarla. El fondo se desenfoca. Escape, la cruz o tocar fuera cierra la galería.

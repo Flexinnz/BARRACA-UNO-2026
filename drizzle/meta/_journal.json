@@ -29,6 +29,27 @@
       "when": 1791119767271,
       "tag": "0003_bitter_havok",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1791230400000,
+      "tag": "0004_user_auth",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1791230400001,
+      "tag": "0005_preview_catalog_orders",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1791230400002,
+      "tag": "0006_signed_jwt_sessions",
+      "breakpoints": true
     }
   ]
 }
