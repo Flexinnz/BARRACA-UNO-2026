@@ -1,16 +1,35 @@
-
 "use client";
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Dialog } from './modal';
 import { BrandLogo, CityScape } from './brand-art';
 import { GalleryProvider, useProductGallery } from './product-gallery';
 import { useAccount, useTheme, ThemeButton, Avatar, AccountContent } from './profile-panel';
-import { Package, Search, X, ShoppingCart, Bell, ChevronDown, Grid2X2, List, Plus, Minus, Trash2, Check, Building2, ArrowUpRight, Boxes, TriangleAlert, Paintbrush, Wrench, Zap, Droplets, Layers, FileText, CheckCircle2, Clock, Truck, XCircle, MapPin, CreditCard, Phone, StickyNote, ClipboardList, RefreshCw, Users } from 'lucide-react';
+import { Package, Search, X, ShoppingCart, Bell, ChevronDown, Grid2X2, List, Plus, Minus, Trash2, Check, Building2, ArrowUpRight, Boxes, TriangleAlert, Paintbrush, Wrench, Zap, Droplets, Layers, FileText, CheckCircle2, Clock, Truck, XCircle, MapPin, CreditCard, Phone, StickyNote, ClipboardList, RefreshCw, Users, ShieldCheck, Award, Sparkles, Copy, Download, QrCode, Star, ArrowRight } from 'lucide-react';
 import { Category, Product, OrderItem, names, categories, defaultProducts, APP_VERSION } from '../lib/catalog';
+import { generateAndDownloadPdf, InvoiceData } from '../lib/invoice-receipt';
+import { generateQrSvg } from '../lib/qr';
 
 const money = (v: number) => new Intl.NumberFormat('es-UY', { style: 'currency', currency: 'UYU', maximumFractionDigits: 0 }).format(v);
 const fmtDate = (v: string) => new Intl.DateTimeFormat('es-UY', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Montevideo' }).format(new Date(v));
 const icons: Record<string, typeof Package> = { 'Masonería': Layers, 'Hierros y Estructuras': Boxes, 'Herramientas': Wrench, 'Sanitaria': Droplets, 'Electricidad': Zap, 'Pinturería': Paintbrush };
+
+export interface ReceiptData {
+  id: string;
+  total: number;
+  subtotal: number;
+  tax: number;
+  method: string;
+  invoiceType: 'consumidor_final' | 'factura_rut';
+  rut?: string;
+  companyName?: string;
+  customerName?: string;
+  customerEmail?: string;
+  customerPhone?: string;
+  address?: string;
+  city?: string;
+  items: Array<{ name: string; sku?: string; quantity: number; unit?: string; unitPrice: number; total: number }>;
+  dateStr: string;
+}
 
 // ── Cart ─────────────────────────────────────────────────────────────────────
 function useCart(products: Product[]) {
@@ -76,10 +95,12 @@ function ProductCard({ p, onAdd, table = false }: { p: Product; onAdd: (p: Produ
 }
 
 // ── My Orders panel ───────────────────────────────────────────────────────────
-function MyOrders({ onClose }: { onClose: () => void }) {
+function MyOrders({ onClose, account }: { onClose: () => void; account: ReturnType<typeof useAccount> }) {
   const [orders, setOrders] = useState<UserOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
   const load = useCallback(async () => {
     setLoading(true); setError('');
     try {
@@ -90,12 +111,81 @@ function MyOrders({ onClose }: { onClose: () => void }) {
     } catch (e) { setError(e instanceof Error ? e.message : 'Error desconocido'); }
     finally { setLoading(false); }
   }, []);
+
   useEffect(() => { void load(); }, [load]);
+
+  const handleDownloadInvoice = async (o: UserOrder) => {
+    setDownloadingId(o.id);
+    try {
+      const res = await fetch(`/api/orders?orderId=${encodeURIComponent(o.id)}`);
+      let itemsList: InvoiceData['items'] = [];
+      let rutVal: string | undefined;
+      let companyVal: string | undefined;
+
+      if (res.ok) {
+        const data = await res.json() as { order?: { notes?: string; user_name?: string; user_email?: string; shipping_address?: string; shipping_city?: string; shipping_phone?: string; subtotal?: number; tax?: number; total?: number; payment_method?: string; created_at?: string }; items?: Array<{ product_name: string; product_sku: string; product_unit: string; quantity: number; unit_price: number; line_total: number }> };
+        if (data.items?.length) {
+          itemsList = data.items.map(it => ({
+            name: it.product_name,
+            sku: it.product_sku,
+            quantity: it.quantity,
+            unit: it.product_unit,
+            unitPrice: it.unit_price,
+            total: it.line_total,
+          }));
+        }
+        if (data.order?.notes) {
+          const rutMatch = data.order.notes.match(/RUT\s+([0-9]{12})/i);
+          if (rutMatch) rutVal = rutMatch[1];
+          const compMatch = data.order.notes.match(/RUT\s+[0-9]{12}\s*-\s*([^\]]+)/i);
+          if (compMatch) companyVal = compMatch[1].trim();
+        }
+      }
+
+      if (!itemsList.length && o.items_summary) {
+        itemsList = o.items_summary.split('|').map(s => {
+          const parts = s.split(' x');
+          const qty = parseInt(parts[1] || '1', 10);
+          return {
+            name: parts[0] || 'Material de construcción',
+            quantity: qty,
+            unitPrice: Math.round(o.total / (qty || 1)),
+            total: o.total,
+          };
+        });
+      }
+
+      const subtotal = Math.round(o.total / 1.22);
+      const tax = o.total - subtotal;
+
+      await generateAndDownloadPdf({
+        orderId: o.id,
+        dateStr: fmtDate(o.created_at),
+        customerName: account.profile?.displayName || 'Cliente',
+        customerEmail: account.profile?.email || '',
+        customerPhone: '',
+        companyName: companyVal || account.profile?.company,
+        rut: rutVal || (account.profile?.bio?.match(/RUT:\s*([0-9]+)/i)?.[1] || undefined),
+        address: o.shipping_address || 'Entrega coordinada',
+        city: o.shipping_city || 'Uruguay',
+        paymentMethod: o.payment_method,
+        items: itemsList.length ? itemsList : [{ name: 'Materiales Barraca Uno', quantity: 1, unitPrice: subtotal, total: subtotal }],
+        subtotal,
+        tax,
+        total: o.total,
+      });
+    } catch (e) {
+      alert('No se pudo generar el comprobante. Reintentá.');
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
   return (
     <Dialog label="Mis pedidos" onClose={onClose}>
       <div className="my-orders-panel">
         <div className="drawer-head">
-          <div><span className="eyebrow">BARRACA UNO</span><h2>Mis pedidos</h2><p>Historial y estado de tus órdenes de compra</p></div>
+          <div><span className="eyebrow">BARRACA UNO</span><h2>Mis pedidos</h2><p>Historial y comprobantes oficiales de tus compras</p></div>
           <div style={{ display: 'flex', gap: '8px' }}>
             <button className="secondary icon-only" aria-label="Actualizar" onClick={() => void load()}><RefreshCw size={16} /></button>
             <button className="icon-button" aria-label="Cerrar" onClick={onClose}><X /></button>
@@ -104,7 +194,7 @@ function MyOrders({ onClose }: { onClose: () => void }) {
         {error && <p className="admin-error" role="alert">{error}</p>}
         {loading && <p className="orders-loading"><Clock size={20} /> Cargando pedidos…</p>}
         {!loading && !orders.length && (
-          <div className="empty"><ClipboardList size={44} /><h3>Todavía no tenés pedidos</h3><p>Cuando hagas una orden va a aparecer acá con su estado en tiempo real.</p></div>
+          <div className="empty"><ClipboardList size={44} /><h3>Todavía no tenés pedidos</h3><p>Cuando hagas una orden va a aparecer acá con su comprobante fiscal y estado en tiempo real.</p></div>
         )}
         {orders.map(o => {
           const cfg = STATUS_CFG[o.status] || STATUS_CFG.pending;
@@ -132,6 +222,18 @@ function MyOrders({ onClose }: { onClose: () => void }) {
                   return <div key={s} className={`progress-step ${done ? 'done' : ''}`}><span><c2.Icon size={13} /></span><small>{c2.label.split(' ')[0]}</small></div>;
                 })}
               </div>
+              <div style={{ marginTop: '12px', display: 'flex', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  className="secondary"
+                  style={{ fontSize: '12px', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  disabled={downloadingId === o.id}
+                  onClick={() => handleDownloadInvoice(o)}
+                >
+                  <Download size={14} />
+                  {downloadingId === o.id ? 'Generando PDF…' : 'Descargar Comprobante Fiscal (PDF)'}
+                </button>
+              </div>
             </div>
           );
         })}
@@ -145,30 +247,83 @@ interface CheckoutForm { paymentMethod: string; shippingAddress: string; shippin
 function CheckoutModal({ cart, account, onSuccess, onBack }: {
   cart: ReturnType<typeof useCart>;
   account: ReturnType<typeof useAccount>;
-  onSuccess: (id: string, total: number, paymentMethod: string) => void;
+  onSuccess: (receipt: ReceiptData) => void;
   onBack: () => void;
 }) {
-  const [form, setForm] = useState<CheckoutForm>({ paymentMethod: '', shippingAddress: '', shippingCity: '', shippingPhone: '', notes: '' });
+  const defaultRut = (account.profile?.bio?.match(/RUT:\s*([0-9]+)/i)?.[1] || '').trim();
+  const defaultCompany = (account.profile?.company || '').trim();
+  const [invoiceType, setInvoiceType] = useState<'consumidor_final' | 'factura_rut'>(defaultRut ? 'factura_rut' : 'consumidor_final');
+  const [rut, setRut] = useState(defaultRut);
+  const [companyName, setCompanyName] = useState(defaultCompany);
+
+  const [form, setForm] = useState<CheckoutForm>({
+    paymentMethod: '',
+    shippingAddress: '',
+    shippingCity: '',
+    shippingPhone: account.profile?.phone || '',
+    notes: '',
+  });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const set = (k: keyof CheckoutForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setForm(f => ({ ...f, [k]: e.target.value }));
+
   const submit = async () => {
     if (!account.authenticated) { setError('Necesitás iniciar sesión para hacer un pedido.'); return; }
+    if (invoiceType === 'factura_rut') {
+      const cleanRut = rut.trim();
+      if (!cleanRut || cleanRut.length !== 12 || !/^\d+$/.test(cleanRut)) {
+        setError('El RUT para e-Factura DGI debe tener exactamente 12 dígitos numéricos.');
+        return;
+      }
+      if (!companyName.trim()) {
+        setError('Ingresá la Razón Social o nombre de la Empresa / Obra.');
+        return;
+      }
+    }
+
     setSubmitting(true); setError('');
     try {
       const payload = {
         items: cart.items.map(i => ({ productId: i.product.id, productName: i.product.name, productSku: i.product.sku, productUnit: i.product.unit, quantity: i.quantity, unitPrice: i.product.price })),
+        invoiceType,
+        rut: invoiceType === 'factura_rut' ? rut.trim() : undefined,
+        companyName: invoiceType === 'factura_rut' ? companyName.trim() : undefined,
         ...form,
       };
       const r = await fetch('/api/orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const d = await r.json() as { orderId?: string; error?: string };
       if (!r.ok) throw Error(d.error || 'No pudimos procesar tu pedido.');
       const total = cart.total;
+      const receiptItems = cart.items.map(i => ({
+        name: i.product.name,
+        sku: i.product.sku,
+        quantity: i.quantity,
+        unit: i.product.unit,
+        unitPrice: i.product.price,
+        total: i.quantity * i.product.price,
+      }));
       cart.clear();
-      onSuccess(d.orderId!, total, form.paymentMethod);
+      onSuccess({
+        id: d.orderId!,
+        total,
+        subtotal: cart.subtotal,
+        tax: cart.tax,
+        method: form.paymentMethod,
+        invoiceType,
+        rut: invoiceType === 'factura_rut' ? rut.trim() : undefined,
+        companyName: invoiceType === 'factura_rut' ? companyName.trim() : undefined,
+        customerName: account.profile?.displayName || 'Cliente',
+        customerEmail: account.profile?.email || '',
+        customerPhone: form.shippingPhone,
+        address: form.shippingAddress,
+        city: form.shippingCity,
+        items: receiptItems,
+        dateStr: new Date().toLocaleString('es-UY', { timeZone: 'America/Montevideo', dateStyle: 'short', timeStyle: 'medium' }),
+      });
     } catch (e) { setError(e instanceof Error ? e.message : 'Error al enviar el pedido.'); }
     finally { setSubmitting(false); }
   };
+
   return (
     <Dialog label="Finalizar pedido" onClose={onBack}>
       <div className="checkout-modal">
@@ -200,13 +355,78 @@ function CheckoutModal({ cart, account, onSuccess, onBack }: {
             </div>
           </section>
 
+          {/* Facturación Fiscal DGI */}
+          <section className="checkout-section">
+            <h3><Building2 size={16} />Tipo de comprobante fiscal DGI</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
+              <button
+                type="button"
+                onClick={() => setInvoiceType('consumidor_final')}
+                style={{
+                  padding: '8px',
+                  borderRadius: '6px',
+                  border: `2px solid ${invoiceType === 'consumidor_final' ? 'var(--accent)' : 'var(--border)'}`,
+                  background: invoiceType === 'consumidor_final' ? 'rgba(59,130,246,0.12)' : 'var(--surface-muted)',
+                  color: invoiceType === 'consumidor_final' ? 'var(--accent)' : 'inherit',
+                  fontWeight: invoiceType === 'consumidor_final' ? 700 : 500,
+                  fontSize: '12px',
+                  cursor: 'pointer'
+                }}
+              >
+                Consumidor Final (e-Ticket)
+              </button>
+              <button
+                type="button"
+                onClick={() => setInvoiceType('factura_rut')}
+                style={{
+                  padding: '8px',
+                  borderRadius: '6px',
+                  border: `2px solid ${invoiceType === 'factura_rut' ? 'var(--accent)' : 'var(--border)'}`,
+                  background: invoiceType === 'factura_rut' ? 'rgba(59,130,246,0.12)' : 'var(--surface-muted)',
+                  color: invoiceType === 'factura_rut' ? 'var(--accent)' : 'inherit',
+                  fontWeight: invoiceType === 'factura_rut' ? 700 : 500,
+                  fontSize: '12px',
+                  cursor: 'pointer'
+                }}
+              >
+                Empresa / Obra (e-Factura RUT)
+              </button>
+            </div>
+
+            {invoiceType === 'factura_rut' && (
+              <div className="checkout-fields" style={{ background: 'rgba(59,130,246,0.05)', padding: '10px', borderRadius: '8px', border: '1px solid rgba(59,130,246,0.2)' }}>
+                <label>
+                  <span>RUT de la Empresa (12 dígitos numéricos DGI)</span>
+                  <input
+                    type="text"
+                    maxLength={12}
+                    placeholder="Ej: 214589210019"
+                    value={rut}
+                    onChange={e => setRut(e.target.value.replace(/\D/g, ''))}
+                    required
+                  />
+                </label>
+                <label>
+                  <span>Razón Social / Nombre de Obra</span>
+                  <input
+                    type="text"
+                    placeholder="Ej: Constructora Horizonte S.A."
+                    value={companyName}
+                    onChange={e => setCompanyName(e.target.value)}
+                    required
+                  />
+                </label>
+              </div>
+            )}
+          </section>
+
           {/* Envío */}
           <section className="checkout-section">
-            <h3><MapPin size={16} />Datos de envío</h3>
+            <h3><MapPin size={16} />Datos de entrega</h3>
             <div className="checkout-fields">
-              <label><span>Dirección</span><input type="text" placeholder="Ej: Av. 18 de Julio 1234" value={form.shippingAddress} onChange={set('shippingAddress')} required /></label>
+              <label><span>Dirección o Calle y Número</span><input type="text" placeholder="Ej: Av. 18 de Julio 1234 esq. Cuareim" value={form.shippingAddress} onChange={set('shippingAddress')} required /></label>
               <label><span>Ciudad / Departamento</span><input type="text" placeholder="Ej: Montevideo" value={form.shippingCity} onChange={set('shippingCity')} required /></label>
-              <label><span>Teléfono de contacto</span><input type="tel" placeholder="Ej: 099 123 456" value={form.shippingPhone} onChange={set('shippingPhone')} required /></label>
+              <label><span>Teléfono de contacto / Obra</span><input type="tel" placeholder="Ej: 099 123 456" value={form.shippingPhone} onChange={set('shippingPhone')} required /></label>
             </div>
           </section>
 
@@ -214,7 +434,7 @@ function CheckoutModal({ cart, account, onSuccess, onBack }: {
           <section className="checkout-section">
             <h3><CreditCard size={16} />Método de pago</h3>
             <div className="payment-options">
-              {['Efectivo', 'Transferencia bancaria', 'Cheque', 'Tarjeta de débito', 'Tarjeta de crédito'].map(m => (
+              {['Efectivo / Redpagos / Abitab', 'Transferencia bancaria BROU / Santander / Itaú', 'Cheque al día', 'Tarjeta de débito', 'Tarjeta de crédito'].map(m => (
                 <label key={m} className={`payment-option ${form.paymentMethod === m ? 'selected' : ''}`}>
                   <input type="radio" name="payment" value={m} checked={form.paymentMethod === m} onChange={set('paymentMethod')} />
                   <span>{m}</span>
@@ -225,17 +445,17 @@ function CheckoutModal({ cart, account, onSuccess, onBack }: {
 
           {/* Notas */}
           <section className="checkout-section">
-            <h3><StickyNote size={16} />Notas adicionales <small>(opcional)</small></h3>
-            <textarea placeholder="Instrucciones especiales, horario de entrega, etc." value={form.notes} onChange={set('notes')} rows={3} />
+            <h3><StickyNote size={16} />Instrucciones para despacho <small>(opcional)</small></h3>
+            <textarea placeholder="Horarios de recepción de materiales, persona autorizada a recibir, etc." value={form.notes} onChange={set('notes')} rows={2} />
           </section>
         </div>
 
         {error && <p className="admin-error" role="alert">{error}</p>}
 
         <div className="checkout-actions">
-          <button className="secondary" onClick={onBack} disabled={submitting}>← Volver al carrito</button>
+          <button className="secondary" onClick={onBack} disabled={submitting}>← Volver a la orden</button>
           <button className="primary generate" onClick={() => void submit()} disabled={submitting || !account.authenticated || !form.paymentMethod || !form.shippingAddress || !form.shippingCity || !form.shippingPhone}>
-            {submitting ? 'Enviando…' : <><CheckCircle2 size={18} /> Confirmar pedido</>}
+            {submitting ? 'Enviando orden…' : <><CheckCircle2 size={18} /> Confirmar y Emitir Comprobante</>}
           </button>
         </div>
       </div>
@@ -287,7 +507,7 @@ export default function Home({ initialProducts = defaultProducts }: { initialPro
 
   useEffect(() => {
     if (!account.authenticated || account.isAdmin) return;
-    fetch('/api/orders', { cache: 'no-store' }).then(r => r.json()).then(d => {
+    fetch('/api/orders', { cache: 'no-store' }).then(r => r.json() as Promise<{ orders?: UserOrder[] }>).then(d => {
       if (d.orders) setUserOrders(d.orders);
     }).catch(console.error);
   }, [account.authenticated, account.isAdmin]);
@@ -299,10 +519,54 @@ export default function Home({ initialProducts = defaultProducts }: { initialPro
   const [drawer, setDrawer] = useState(false);
   const [checkout, setCheckout] = useState(false);
   const [myOrders, setMyOrders] = useState(false);
-  const [receipt, setReceipt] = useState<{ id: string; total: number; method: string } | null>(null);
+  const [receipt, setReceipt] = useState<ReceiptData | null>(null);
   const [profile, setProfile] = useState(false);
   const [toast, setToast] = useState('');
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+
+  // Buyer loyalty tier
+  const totalSpent = useMemo(() => {
+    return userOrders
+      .filter(o => o.status !== 'cancelled')
+      .reduce((sum, o) => sum + (o.total || 0), 0);
+  }, [userOrders]);
+
+  const buyerTier = useMemo(() => {
+    if (totalSpent >= 15000) {
+      return {
+        id: 'vip',
+        name: 'Cliente VIP Empresarial',
+        badge: '🌟 VIP Empresarial',
+        color: '#f59e0b',
+        level: 3,
+        motivation: '🌟 ¡Nivel VIP Empresarial alcanzado! Estamos muy contentos y agradecidos con vos por confiar en nosotros para tus obras. Contás con despacho exprés prioritario, lista preferencial y asesor técnico asignado.',
+        progress: 100,
+        nextTierText: '¡Máximo nivel de beneficios alcanzado!',
+      };
+    } else if (totalSpent >= 5000) {
+      return {
+        id: 'frecuente',
+        name: 'Cliente Frecuente',
+        badge: '🥈 Frecuente',
+        color: '#3b82f6',
+        level: 2,
+        motivation: '🎉 ¡Felicitaciones! Sos Cliente Frecuente. Gracias por confiar en Barraca Uno para tus proyectos. Estás a un paso de ascender a Cliente VIP con atención personalizada.',
+        progress: Math.min(100, Math.round(((totalSpent - 5000) / 10000) * 100)),
+        nextTierText: `Te faltan ${money(15000 - totalSpent)} para nivel VIP`,
+      };
+    } else {
+      return {
+        id: 'constructor',
+        name: 'Cliente Constructor',
+        badge: '🧱 Constructor Inicial',
+        color: '#10b981',
+        level: 1,
+        motivation: '👋 ¡Bienvenido al programa de beneficios de Barraca Uno! Acumulá pedidos para ascender a Cliente Frecuente y obtener bonificaciones exclusivas en flete y herramientas.',
+        progress: Math.min(100, Math.round((totalSpent / 5000) * 100)),
+        nextTierText: `Te faltan ${money(5000 - totalSpent)} para Cliente Frecuente`,
+      };
+    }
+  }, [totalSpent]);
 
   const add = (p: Product, q: number) => { cart.add(p, q); setDrawer(true); setToast(`${p.name} agregado a la orden`) };
   useEffect(() => { if (toast) { const t = setTimeout(() => setToast(''), 2500); return () => clearTimeout(t) } }, [toast]);
@@ -347,25 +611,43 @@ export default function Home({ initialProducts = defaultProducts }: { initialPro
               </>
             ) : account.authenticated ? (
               <>
-                <button className="alert-button" aria-label="Ver notificaciones de pedidos" onClick={() => setNotificationsOpen(!notificationsOpen)}><Bell size={21} /><span className="alert-dot" style={{ background: 'var(--blue)' }}>{userOrders.length > 0 ? userOrders.length : 0}</span></button>
+                <button className="alert-button" aria-label="Ver notificaciones y nivel" onClick={() => setNotificationsOpen(!notificationsOpen)}><Bell size={21} /><span className="alert-dot" style={{ background: buyerTier.color }}>{userOrders.length > 0 ? userOrders.length : 1}</span></button>
                 {notificationsOpen && (
-                  <div className="profile-menu" style={{ right: 0, width: '320px', zIndex: 100 }}>
-                    <h4 style={{ margin: '0 0 10px', fontSize: '14px', color: 'var(--blue)' }}>Estado de tus Pedidos</h4>
-                    <div style={{ maxHeight: '250px', overflowY: 'auto' }}>
+                  <div className="profile-menu" style={{ right: 0, width: '340px', zIndex: 100, padding: '14px' }}>
+                    {/* Buyer Tier VIP Card */}
+                    <div style={{ padding: '12px', background: 'rgba(59, 130, 246, 0.08)', borderRadius: '10px', marginBottom: '12px', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                        <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-soft)', fontWeight: 700 }}>Nivel de Comprador</span>
+                        <span style={{ fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '12px', background: buyerTier.color, color: '#fff' }}>{buyerTier.badge}</span>
+                      </div>
+                      <p style={{ margin: '0 0 8px', fontSize: '12px', lineHeight: '1.4', color: 'var(--text-primary)', fontWeight: 500 }}>
+                        {buyerTier.motivation}
+                      </p>
+                      <div style={{ background: 'rgba(0,0,0,0.1)', height: '6px', borderRadius: '3px', overflow: 'hidden', marginBottom: '6px' }}>
+                        <div style={{ background: buyerTier.color, width: `${buyerTier.progress}%`, height: '100%', transition: 'width 0.3s ease' }} />
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-soft)' }}>
+                        <span>Invertido: {money(totalSpent)}</span>
+                        <span>{buyerTier.nextTierText}</span>
+                      </div>
+                    </div>
+
+                    <h4 style={{ margin: '0 0 10px', fontSize: '13px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}><ClipboardList size={14} /> Estado de tus Pedidos</h4>
+                    <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
                       {userOrders.slice(0, 5).map(o => (
                         <div key={o.id} style={{ display: 'flex', flexDirection: 'column', gap: '4px', padding: '8px 0', borderBottom: '1px solid var(--border)', fontSize: '12px' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                             <span style={{ fontWeight: 600 }}>Pedido {o.id}</span>
                             <StatusBadge status={o.status} />
                           </div>
-                          <span style={{ color: 'var(--muted)' }}>
-                            {o.status === 'pending' ? 'Tu pedido fue realizado correctamente y está esperando pago.' : o.status === 'approved' ? 'El pago fue aprobado y el pedido está en preparación.' : o.status === 'shipped' ? '¡Tu pedido ya está en camino!' : o.status === 'delivered' ? 'El pedido fue entregado. ¡Gracias por elegirnos!' : 'El pedido fue cancelado.'}
+                          <span style={{ color: 'var(--text-soft)', fontSize: '11px' }}>
+                            {o.status === 'pending' ? 'Tu pedido fue recibido y está esperando pago.' : o.status === 'approved' ? 'El pago fue aprobado y está en preparación.' : o.status === 'shipped' ? '¡Tu pedido ya está en camino a la obra!' : o.status === 'delivered' ? 'El pedido fue entregado. ¡Gracias por elegirnos!' : 'El pedido fue cancelado.'}
                           </span>
                         </div>
                       ))}
-                      {userOrders.length === 0 && <p style={{ fontSize: '12px', color: 'var(--muted)' }}>No tienes pedidos recientes.</p>}
+                      {userOrders.length === 0 && <p style={{ fontSize: '12px', color: 'var(--text-soft)' }}>No tenés pedidos registrados aún.</p>}
                     </div>
-                    <button className="secondary" style={{ width: '100%', marginTop: '10px', fontSize: '12px', padding: '8px' }} onClick={() => { setNotificationsOpen(false); setMyOrders(true); }}>Ver mis pedidos</button>
+                    <button className="secondary" style={{ width: '100%', marginTop: '10px', fontSize: '12px', padding: '8px' }} onClick={() => { setNotificationsOpen(false); setMyOrders(true); }}>Ver mis pedidos y comprobantes</button>
                   </div>
                 )}
               </>
@@ -382,11 +664,11 @@ export default function Home({ initialProducts = defaultProducts }: { initialPro
             {profile && <div className="profile-menu">
               <strong>{account.loading ? 'Cargando cuenta…' : account.profile?.displayName || 'Tu cuenta'}</strong>
               <small>{account.profile?.email || 'Entrá y personalizá tu espacio'}</small>
+              {account.profile?.company && <small style={{ color: 'var(--accent)', fontWeight: 600 }}>{account.profile.company}</small>}
               <hr />
               <button onClick={() => { setProfile(false); setProfilePanel(true) }}>{account.authenticated ? 'Personalizar mi perfil' : 'Iniciar sesión'}</button>
-              <a href="/cuenta">Mi cuenta</a>
-              {account.authenticated && !account.isAdmin && <button onClick={() => { setProfile(false); setMyOrders(true) }}><ClipboardList size={15} />Mis pedidos</button>}
-              {account.isAdmin && <><a href="/stock">Control de stock</a><a href="/clientes">Gestión de clientes</a><a href="/pedidos-admin">Gestión de pedidos</a><a href="/administracion">Seguridad y cuentas</a></>}
+              <a href="/cuenta">Mi perfil y cuenta</a>
+              {account.authenticated && !account.isAdmin && <button onClick={() => { setProfile(false); setMyOrders(true) }}><ClipboardList size={15} />Mis pedidos y comprobantes</button>}
               <a href="/locales">Nuestros locales</a>
               <a href="/guia">Cómo usar Barraca Uno</a>
               {account.authenticated && <a href="/auth/logout" target="_top">Cerrar sesión</a>}
@@ -400,9 +682,20 @@ export default function Home({ initialProducts = defaultProducts }: { initialPro
         <aside className="sidebar">
           <div className="side-label">BARRACA</div>
           <div className="side-active"><Package size={19} /> Inventario <span>{products.length}</span></div>
-          {account.isAdmin && <a href="/stock" className="cat-link stock-nav"><Boxes size={17} />Control de stock <Plus size={15} /></a>}
-          {account.isAdmin && <a href="/clientes" className="cat-link"><Users size={17} />Gestión de clientes</a>}
-          {account.isAdmin && <a href="/pedidos-admin" className="cat-link"><ClipboardList size={17} />Gestión de pedidos</a>}
+
+          {/* HERRAMIENTAS DE ADMINISTRACIÓN EN EL PANEL LATERAL */}
+          {account.isAdmin && (
+            <div className="sidebar-admin-box" style={{ margin: '14px 0 10px', padding: '10px 8px', background: 'rgba(59, 130, 246, 0.08)', borderRadius: '10px', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
+              <div className="side-label" style={{ color: 'var(--accent)', fontWeight: 700, fontSize: '11px', letterSpacing: '0.05em', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <ShieldCheck size={14} /> PANEL ADMINISTRATIVO
+              </div>
+              <a href="/stock" className="cat-link stock-nav" style={{ fontWeight: 600, fontSize: '13px', margin: '3px 0' }}><Boxes size={16} />Control de stock <Plus size={14} /></a>
+              <a href="/pedidos-admin" className="cat-link" style={{ fontWeight: 600, fontSize: '13px', margin: '3px 0' }}><ClipboardList size={16} />Gestión de pedidos</a>
+              <a href="/clientes" className="cat-link" style={{ fontWeight: 600, fontSize: '13px', margin: '3px 0' }}><Users size={16} />Gestión de clientes (CRM)</a>
+              <a href="/administracion" className="cat-link" style={{ fontWeight: 600, fontSize: '13px', margin: '3px 0' }}><ShieldCheck size={16} />Seguridad y cuentas</a>
+            </div>
+          )}
+
           <a href="/locales" className="cat-link"><Building2 size={17} />Nuestros locales</a>
           <div className="side-label category-label">CATEGORÍAS</div>
           <button className={`cat-link ${f.category === 'Todas' ? 'selected' : ''}`} onClick={() => f.setCategory('Todas')}><Grid2X2 size={17} />Todos los materiales<span>{products.length}</span></button>
@@ -478,6 +771,70 @@ export default function Home({ initialProducts = defaultProducts }: { initialPro
               <div><span>Subtotal</span><b>{money(cart.subtotal)}</b></div>
               <div><span>IVA (22%)</span><b>{money(cart.tax)}</b></div>
               <div className="total"><span>Total de la orden</span><strong>{money(cart.total)} <small>UYU</small></strong></div>
+
+              {/* B2B SaaS features: Download Quote & Share Order */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', margin: '8px 0' }}>
+                <button
+                  type="button"
+                  className="secondary"
+                  style={{ fontSize: '12px', padding: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                  onClick={async () => {
+                    setIsGeneratingPdf(true);
+                    try {
+                      await generateAndDownloadPdf({
+                        orderId: `COT-${Date.now().toString(36).toUpperCase()}`,
+                        customerName: account.profile?.displayName || 'Cliente Obra',
+                        customerEmail: account.profile?.email || 'ventas@barraca-uno.com',
+                        customerPhone: account.profile?.phone,
+                        companyName: account.profile?.company,
+                        rut: account.profile?.bio?.match(/RUT:\s*([0-9]+)/i)?.[1],
+                        address: 'Entrega en Obra a coordinar',
+                        city: 'Montevideo / Canelones',
+                        paymentMethod: 'Presupuesto B2B válido por 15 días',
+                        items: cart.items.map(i => ({
+                          name: i.product.name,
+                          sku: i.product.sku,
+                          quantity: i.quantity,
+                          unit: i.product.unit,
+                          unitPrice: i.product.price,
+                          total: i.quantity * i.product.price,
+                        })),
+                        subtotal: cart.subtotal,
+                        tax: cart.tax,
+                        total: cart.total,
+                        notes: 'Cotización comercial para acopio de materiales y compras de obra. Precios congelados por 15 días corridos.',
+                        dateStr: new Date().toLocaleString('es-UY', { timeZone: 'America/Montevideo', dateStyle: 'short', timeStyle: 'medium' }),
+                      }, `Cotizacion_BarracaUno_${Date.now().toString(36).toUpperCase()}.pdf`);
+                    } catch {
+                      alert('Error al generar la cotización.');
+                    } finally {
+                      setIsGeneratingPdf(false);
+                    }
+                  }}
+                  disabled={isGeneratingPdf}
+                >
+                  <Download size={14} /> {isGeneratingPdf ? 'Generando…' : 'Cotización (PDF)'}
+                </button>
+                <button
+                  type="button"
+                  className="secondary"
+                  style={{ fontSize: '12px', padding: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                  onClick={async () => {
+                    const text = `📋 *Cotización / Pedido Barraca Uno*\n` +
+                      cart.items.map(i => `• ${i.quantity} ${i.product.unit} × ${i.product.name} (${money(i.product.price)}) = ${money(i.quantity * i.product.price)}`).join('\n') +
+                      `\n\n*Subtotal:* ${money(cart.subtotal)}\n*IVA (22%):* ${money(cart.tax)}\n*Total:* ${money(cart.total)} UYU\n\nEmitido por Barraca Uno SaaS v2.3`;
+                    try {
+                      await navigator.clipboard.writeText(text);
+                      setToast('¡Resumen de orden copiado al portapapeles!');
+                    } catch {
+                      alert('No se pudo copiar automáticamente.');
+                    }
+                  }}
+                >
+                  <Copy size={14} /> Compartir
+                </button>
+              </div>
+
               <button className="primary generate" onClick={() => { setDrawer(false); setCheckout(true) }}><FileText size={18} /> Completar pedido</button>
               <button className="clear-order" onClick={cart.clear}><Trash2 size={15} /> Vaciar Orden</button>
             </div>
@@ -491,59 +848,102 @@ export default function Home({ initialProducts = defaultProducts }: { initialPro
           cart={cart}
           account={account}
           onBack={() => { setCheckout(false); setDrawer(true) }}
-          onSuccess={(id, total, method) => { setCheckout(false); setReceipt({ id, total, method }); }}
+          onSuccess={(newReceipt) => { setCheckout(false); setReceipt(newReceipt); }}
         />
       )}
 
       {/* ── Receipt ── */}
       {receipt && (
         <Dialog label="¡Pedido enviado!" onClose={() => setReceipt(null)}>
-          <div className="modal-content success" style={{ paddingBottom: '40px' }}>
-            <CheckCircle2 size={56} />
-            <h2>¡Pedido confirmado!</h2>
-            <p className="receipt-id">{receipt.id}</p>
-            <div className="modal-total">Total con IVA<strong>{money(receipt.total)}</strong></div>
-            <p style={{ marginBottom: '25px', lineHeight: '1.5' }}>
-              {receipt.method === 'Efectivo / Redpagos / Abitab' ? 'Llevá este número a cualquier sucursal para abonar tu pedido. ' : 'Tu pago se procesó correctamente. '}
-              El equipo de Barraca Uno lo va a revisar y te contactará para coordinar la entrega.
-            </p>
-            
-            <button className="primary" style={{ width: '100%', marginBottom: '12px' }} onClick={async () => {
-              setIsGeneratingPdf(true);
-              try {
-                const html2canvas = (await import('html2canvas')).default;
-                const { jsPDF } = await import('jspdf');
-                const element = document.createElement('div');
-                element.innerHTML = `
-                  <div style="padding:40px;font-family:sans-serif;color:#0f172a;width:600px">
-                    <h1 style="color:#0B3C5D;margin:0 0 5px">BARRACA UNO</h1>
-                    <p style="color:#64748b;margin:0 0 30px">Comprobante de Pedido</p>
-                    <h2 style="font-size:32px;margin:0 0 10px">Pedido ${receipt.id}</h2>
-                    <p style="font-size:18px;margin:0 0 20px">Total: <strong>${money(receipt.total)}</strong></p>
-                    <p style="color:#64748b;background:#f8fafc;padding:15px;border-radius:8px">
-                      ${receipt.method === 'Efectivo / Redpagos / Abitab' ? 'Presente este número de pedido en Redpagos o Abitab para abonar.' : 'Abonado vía ' + receipt.method}
-                    </p>
-                  </div>
-                `;
-                document.body.appendChild(element);
-                const canvas = await html2canvas(element);
-                document.body.removeChild(element);
-                const pdf = new jsPDF('p', 'mm', 'a4');
-                pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 10, 10, 190, (canvas.height * 190) / canvas.width);
-                pdf.save(`Comprobante_BarracaUno_${receipt.id}.pdf`);
-              } catch (e) { alert('Error al generar PDF'); }
-              finally { setIsGeneratingPdf(false); }
-            }}>
-              <FileText size={16} />{isGeneratingPdf ? 'Generando...' : 'Descargar comprobante (PDF)'}
+          <div className="modal-content success" style={{ paddingBottom: '30px', maxWidth: '580px', margin: '0 auto' }}>
+            <CheckCircle2 size={52} color="#10b981" />
+            <h2 style={{ margin: '8px 0 4px' }}>¡Pedido confirmado con éxito!</h2>
+            <p className="receipt-id" style={{ fontSize: '16px', fontWeight: 700, color: 'var(--accent)' }}>{receipt.id}</p>
+
+            {/* DGI QR Code */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', margin: '14px 0', padding: '12px', background: '#ffffff', borderRadius: '10px', border: '1px solid var(--border)' }}>
+              <div dangerouslySetInnerHTML={{
+                __html: generateQrSvg(`RUT:218492010019|CFE:${receipt.invoiceType === 'factura_rut' ? '111' : '101'}|SERIE:A-00|NUM:${receipt.id}|TOTAL:${receipt.total}|FECHA:${receipt.dateStr}|HASH:${receipt.id.slice(-6).toUpperCase()}`, 125)
+              }} />
+              <span style={{ fontSize: '11px', color: '#64748b', marginTop: '6px', fontWeight: 600 }}>
+                {receipt.invoiceType === 'factura_rut' ? 'e-Factura CFE 111 con RUT' : 'e-Ticket CFE 101 Consumidor Final'} · Verificación DGI
+              </span>
+            </div>
+
+            {/* Order & Fiscal Meta */}
+            <div style={{ background: 'var(--surface-muted)', padding: '12px', borderRadius: '8px', fontSize: '12px', textAlign: 'left', marginBottom: '14px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <span style={{ color: 'var(--text-soft)' }}>Fecha y hora:</span>
+                <strong>{receipt.dateStr}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <span style={{ color: 'var(--text-soft)' }}>Facturación:</span>
+                <strong>{receipt.companyName ? `${receipt.companyName} (RUT: ${receipt.rut})` : (receipt.customerName || 'Consumidor Final')}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <span style={{ color: 'var(--text-soft)' }}>Forma de pago:</span>
+                <strong>{receipt.method}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--text-soft)' }}>Entrega:</span>
+                <span>{receipt.address}, {receipt.city}</span>
+              </div>
+            </div>
+
+            {/* Items summary */}
+            <div style={{ maxHeight: '140px', overflowY: 'auto', textAlign: 'left', marginBottom: '14px', border: '1px solid var(--border)', borderRadius: '6px', padding: '8px' }}>
+              {receipt.items.map((it, idx) => (
+                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', padding: '4px 0', borderBottom: idx < receipt.items.length - 1 ? '1px dashed var(--border)' : 'none' }}>
+                  <span>{it.quantity} {it.unit || 'un.'} × {it.name}</span>
+                  <strong>{money(it.total)}</strong>
+                </div>
+              ))}
+            </div>
+
+            <div className="modal-total" style={{ margin: '0 0 16px' }}>Total abonado con IVA<strong>{money(receipt.total)}</strong></div>
+
+            <button
+              className="primary"
+              style={{ width: '100%', marginBottom: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+              disabled={isGeneratingPdf}
+              onClick={async () => {
+                setIsGeneratingPdf(true);
+                try {
+                  await generateAndDownloadPdf({
+                    orderId: receipt.id,
+                    dateStr: receipt.dateStr,
+                    customerName: receipt.customerName || 'Cliente',
+                    customerEmail: receipt.customerEmail || '',
+                    customerPhone: receipt.customerPhone,
+                    companyName: receipt.companyName,
+                    rut: receipt.rut,
+                    address: receipt.address || 'Entrega coordinada',
+                    city: receipt.city || 'Uruguay',
+                    paymentMethod: receipt.method,
+                    items: receipt.items,
+                    subtotal: receipt.subtotal,
+                    tax: receipt.tax,
+                    total: receipt.total,
+                  });
+                } catch (e) {
+                  alert('Error al generar el comprobante PDF.');
+                } finally {
+                  setIsGeneratingPdf(false);
+                }
+              }}
+            >
+              <Download size={16} />
+              {isGeneratingPdf ? 'Generando PDF oficial…' : 'Descargar Comprobante Fiscal Oficial (PDF)'}
             </button>
-            <button className="secondary" style={{ width: '100%', marginBottom: '12px' }} onClick={() => { setReceipt(null); setMyOrders(true) }}><ClipboardList size={17} />Ver mis pedidos</button>
+
+            <button className="secondary" style={{ width: '100%', marginBottom: '10px' }} onClick={() => { setReceipt(null); setMyOrders(true) }}><ClipboardList size={17} />Ver todos mis pedidos</button>
             <button className="clear-order" onClick={() => setReceipt(null)}>Volver al catálogo</button>
           </div>
         </Dialog>
       )}
 
       {/* ── My Orders ── */}
-      {myOrders && <MyOrders onClose={() => setMyOrders(false)} />}
+      {myOrders && <MyOrders onClose={() => setMyOrders(false)} account={account} />}
 
       {/* ── Profile panel ── */}
       {profilePanel && (

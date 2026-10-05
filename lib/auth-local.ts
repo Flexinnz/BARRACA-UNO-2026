@@ -34,9 +34,20 @@ export async function verifyPassword(password: string, expectedHash: string, sal
   return hash === expectedHash;
 }
 
-export async function createLocalUser(name: string, email: string, password: string):Promise<{ userId: string; email: string; displayName: string }> {
+export async function createLocalUser(
+  name: string, 
+  email: string, 
+  password: string,
+  company?: string,
+  phone?: string,
+  rut?: string
+): Promise<{ userId: string; email: string; displayName: string }> {
   const cleanEmail = email.trim().toLowerCase();
   const cleanName = name.trim();
+  const cleanCompany = (company || '').trim();
+  const cleanPhone = (phone || '').trim();
+  const cleanRut = (rut || '').trim();
+  const bio = cleanRut ? `RUT: ${cleanRut}` : '';
   const db = profileDb();
 
   const existing = await db.prepare('SELECT user_id FROM accounts WHERE lower(email) = ?').bind(cleanEmail).first();
@@ -54,7 +65,7 @@ export async function createLocalUser(name: string, email: string, password: str
     db.prepare('INSERT INTO user_credentials (user_id, password_hash, salt, created_at) VALUES (?, ?, ?, ?)')
       .bind(userId, hash, salt, now),
     db.prepare('INSERT INTO profiles (user_id, email, display_name, company, phone, bio, avatar, accent, theme, density, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(userId, cleanEmail, cleanName, '', '', '', 'initials', 'ocean', 'dark', 'comfortable', now),
+      .bind(userId, cleanEmail, cleanName, cleanCompany, cleanPhone, bio, 'initials', 'ocean', 'dark', 'comfortable', now),
   ]);
 
   return { userId, email: cleanEmail, displayName: cleanName };

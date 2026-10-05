@@ -12,6 +12,9 @@ interface CheckoutPayload{
   shippingCity:string;
   shippingPhone:string;
   notes:string;
+  invoiceType?:string;
+  rut?:string;
+  companyName?:string;
 }
 
 export async function POST(req:Request){
@@ -54,8 +57,24 @@ export async function POST(req:Request){
   const userName=profile?.display_name||user.email;
 
   // Create order
+  const fiscalNote = body.rut ? `[Facturación DGI: RUT ${body.rut} - ${body.companyName || 'Empresa'}] ` : '';
+  const finalNotes = (fiscalNote + (notes || '')).trim();
+
+  // If user provided company/rut at checkout and doesn't have them in profile, update profile
+  if (body.rut || body.companyName) {
+    try {
+      const bioRut = body.rut ? `RUT: ${body.rut}` : undefined;
+      await db.prepare(`
+        UPDATE profiles 
+        SET company = CASE WHEN company IS NULL OR company = '' THEN ? ELSE company END,
+            bio = CASE WHEN bio IS NULL OR bio = '' THEN ? ELSE bio END
+        WHERE user_id = ?
+      `).bind(body.companyName || '', bioRut || '', user.userId).run();
+    } catch {}
+  }
+
   await db.prepare('INSERT INTO orders (id,user_id,user_email,user_name,status,payment_method,shipping_address,shipping_city,shipping_phone,notes,subtotal,tax,total,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-    .bind(orderId,user.userId,user.email,userName,'pending',paymentMethod,shippingAddress,shippingCity,shippingPhone,notes||'',subtotal,tax,total,now,now).run();
+    .bind(orderId,user.userId,user.email,userName,'pending',paymentMethod,shippingAddress,shippingCity,shippingPhone,finalNotes,subtotal,tax,total,now,now).run();
 
   // Create order items
   for(const item of items){
@@ -92,6 +111,17 @@ export async function GET(req:Request){
   if(!user)return Response.json({error:'No autenticado.'},{status:401});
   const db=profileDb();
   const url=new URL(req.url);
+
+  const singleId = url.searchParams.get('orderId');
+  if (singleId) {
+    const order = isCompanyAdmin(user)
+      ? await db.prepare('SELECT * FROM orders WHERE id=?').bind(singleId).first()
+      : await db.prepare('SELECT * FROM orders WHERE id=? AND user_id=?').bind(singleId, user.userId).first();
+    if (!order) return Response.json({ error: 'Pedido no encontrado.' }, { status: 404 });
+    const items = await db.prepare('SELECT * FROM order_items WHERE order_id=?').bind(singleId).all();
+    return Response.json({ order, items: items.results }, { headers: { 'Cache-Control': 'no-store' } });
+  }
+
   const all=url.searchParams.get('all')==='1'&&isCompanyAdmin(user);
   const query=all
     ?'SELECT o.*,GROUP_CONCAT(oi.product_name||" x"||oi.quantity,"|") AS items_summary FROM orders o LEFT JOIN order_items oi ON oi.order_id=o.id GROUP BY o.id ORDER BY o.created_at DESC LIMIT 200'

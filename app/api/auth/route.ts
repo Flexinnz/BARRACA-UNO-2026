@@ -45,7 +45,7 @@ export async function POST(request:Request){
     return json({error:'Formato no permitido.'},415);
   }
 
-  let input:{action?:string;email?:string;password?:string;name?:string;returnTo?:string;currentPassword?:string;newPassword?:string};
+  let input:{action?:string;email?:string;password?:string;name?:string;returnTo?:string;currentPassword?:string;newPassword?:string;company?:string;phone?:string;rut?:string;clientType?:string};
   try{
     input=JSON.parse(raw);
   }catch{
@@ -98,10 +98,26 @@ export async function POST(request:Request){
       if(typeof input.name!=='string'||!input.name.trim()||input.name.length>80){
         return json({error:'Ingresá tu nombre.'},400);
       }
+      const company = typeof input.company === 'string' ? input.company.trim() : undefined;
+      const phone = typeof input.phone === 'string' ? input.phone.trim() : undefined;
+      const rut = typeof input.rut === 'string' ? input.rut.trim() : undefined;
+
       // If Supabase is active, use it
       if(authConfig()){
         const client=await authClient();
-        const {data,error}=await client.auth.signUp({email,password,options:{data:{full_name:input.name.trim()},emailRedirectTo:`${origin}/auth/callback`}});
+        const {data,error}=await client.auth.signUp({
+          email,
+          password,
+          options:{
+            data:{
+              full_name:input.name.trim(),
+              company: company || '',
+              phone: phone || '',
+              rut: rut || '',
+            },
+            emailRedirectTo:`${origin}/auth/callback`
+          }
+        });
         if(error)return json({error:error.status===429?'Demasiados intentos. Esperá unos minutos.':'No pudimos crear la cuenta. Revisá tus datos o probá iniciar sesión.'},error.status===429?429:400);
         if(!data.session)return json({message:'Revisá tu correo y confirmá la cuenta. Luego podrás iniciar sesión.'});
         const user=await getChatGPTUser();
@@ -112,7 +128,7 @@ export async function POST(request:Request){
       }
 
       // Native DB registration
-      const user=await createLocalUser(input.name.trim(),email,password);
+      const user=await createLocalUser(input.name.trim(),email,password,company,phone,rut);
       const token=await createSession(user.userId);
       const store=await cookies();
       store.set(SESSION_COOKIE_NAME,token,{
