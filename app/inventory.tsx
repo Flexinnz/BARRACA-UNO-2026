@@ -64,7 +64,7 @@ function Badge({ p }: { p: Product }) {
 }
 function Visual({ p, small = false }: { p: Product; small?: boolean }) {
   const open = useProductGallery();
-  return <button type="button" aria-label={`Ver fotos de ${p.name}`} onClick={() => open(p)} className={`product-visual photo ${small ? 'small' : ''}`}><img src={`/products/${p.id}.jpg`} alt={`Imagen ilustrativa de ${p.name}`} loading="lazy" />{!small && <span className="photo-brand">{p.brand}</span>}<span className="photo-expand">Ver fotos ↗</span></button>;
+  return <button type="button" aria-label={`Ver fotos de ${p.name}`} onClick={() => open(p)} className={`product-visual photo ${small ? 'small' : ''}`}><img src={`/products/${p.imageId}.jpg`} alt={`Imagen ilustrativa de ${p.name}`} loading="lazy" />{!small && <span className="photo-brand">{p.brand}</span>}<span className="photo-expand">Ver fotos ↗</span></button>;
 }
 function ProductCard({ p, onAdd, table = false }: { p: Product; onAdd: (p: Product, q: number) => void; table?: boolean }) {
   const [q, setQ] = useState(1), [added, setAdded] = useState(false);
@@ -76,7 +76,6 @@ function ProductCard({ p, onAdd, table = false }: { p: Product; onAdd: (p: Produ
 }
 
 // ── My Orders panel ───────────────────────────────────────────────────────────
-interface UserOrder { id: string; status: string; payment_method: string; shipping_address: string; shipping_city: string; total: number; created_at: string; items_summary: string; }
 function MyOrders({ onClose }: { onClose: () => void }) {
   const [orders, setOrders] = useState<UserOrder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -245,9 +244,12 @@ function CheckoutModal({ cart, account, onSuccess, onBack }: {
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
+export interface UserOrder { id: string; status: string; payment_method: string; shipping_address: string; shipping_city: string; total: number; created_at: string; items_summary: string; }
+
 export default function Home({ initialProducts = defaultProducts }: { initialProducts?: Product[] }) {
   const [products, setProducts] = useState(initialProducts), [stockError, setStockError] = useState(''), [stockRefreshing, setStockRefreshing] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [userOrders, setUserOrders] = useState<UserOrder[]>([]);
   const f = useFilters(products), cart = useCart(products), account = useAccount();
 
   // Live stock refresh
@@ -283,6 +285,14 @@ export default function Home({ initialProducts = defaultProducts }: { initialPro
     return () => { alive = false; clearInterval(timer); window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh) }
   }, [account.authenticated]);
 
+  useEffect(() => {
+    if (!account.authenticated || account.isAdmin) return;
+    fetch('/api/orders', { cache: 'no-store' }).then(r => r.json()).then(d => {
+      if (d.orders) setUserOrders(d.orders);
+    }).catch(console.error);
+  }, [account.authenticated, account.isAdmin]);
+
+
   const { theme, setTheme } = useTheme();
   const [profilePanel, setProfilePanel] = useState(false);
   const [view, setView] = useState('grid');
@@ -316,22 +326,50 @@ export default function Home({ initialProducts = defaultProducts }: { initialPro
         <div className="global-search"><Search size={19} /><input aria-label="Buscar productos" placeholder="Buscar por material, código SKU, marca..." value={f.search} onChange={e => f.setSearch(e.target.value)} />{f.search && <button aria-label="Limpiar búsqueda" onClick={() => f.setSearch('')}><X size={16} /></button>}</div>
         <div className="header-actions">
           <div style={{ position: 'relative' }}>
-            <button className="alert-button" aria-label="Ver alertas de stock" onClick={() => setNotificationsOpen(!notificationsOpen)}><Bell size={21} /><span className="alert-dot">{products.filter(p => p.stock > 0 && p.stock <= 10).length}</span></button>
-            {notificationsOpen && (
-              <div className="profile-menu" style={{ right: 0, width: '320px', zIndex: 100 }}>
-                <h4 style={{ margin: '0 0 10px', fontSize: '14px', color: 'var(--blue)' }}>Alertas de Stock</h4>
-                <div style={{ maxHeight: '250px', overflowY: 'auto' }}>
-                  {products.filter(p => p.stock > 0 && p.stock <= 10).map(p => (
-                    <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border)', fontSize: '12px' }}>
-                      <span style={{ fontWeight: 600 }}>{p.name}</span>
-                      <span className="status low" style={{ marginLeft: '10px' }}>Quedan {p.stock}</span>
+            {account.isAdmin ? (
+              <>
+                <button className="alert-button" aria-label="Ver alertas de stock" onClick={() => setNotificationsOpen(!notificationsOpen)}><Bell size={21} /><span className="alert-dot">{products.filter(p => p.stock > 0 && p.stock <= 10).length}</span></button>
+                {notificationsOpen && (
+                  <div className="profile-menu" style={{ right: 0, width: '320px', zIndex: 100 }}>
+                    <h4 style={{ margin: '0 0 10px', fontSize: '14px', color: 'var(--blue)' }}>Alertas de Stock</h4>
+                    <div style={{ maxHeight: '250px', overflowY: 'auto' }}>
+                      {products.filter(p => p.stock > 0 && p.stock <= 10).map(p => (
+                        <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border)', fontSize: '12px' }}>
+                          <span style={{ fontWeight: 600 }}>{p.name}</span>
+                          <span className="status low" style={{ marginLeft: '10px' }}>Quedan {p.stock}</span>
+                        </div>
+                      ))}
+                      {products.filter(p => p.stock > 0 && p.stock <= 10).length === 0 && <p style={{ fontSize: '12px', color: 'var(--muted)' }}>No hay alertas de stock bajo.</p>}
                     </div>
-                  ))}
-                  {products.filter(p => p.stock > 0 && p.stock <= 10).length === 0 && <p style={{ fontSize: '12px', color: 'var(--muted)' }}>No hay alertas de stock bajo.</p>}
-                </div>
-                <button className="secondary" style={{ width: '100%', marginTop: '10px', fontSize: '12px', padding: '8px' }} onClick={() => { f.setStock('Stock Crítico'); f.setCategory('Todas'); setNotificationsOpen(false); }}>Ver todos en catálogo</button>
-              </div>
-            )}
+                    <button className="secondary" style={{ width: '100%', marginTop: '10px', fontSize: '12px', padding: '8px' }} onClick={() => { f.setStock('Stock Crítico'); f.setCategory('Todas'); setNotificationsOpen(false); }}>Ver todos en catálogo</button>
+                  </div>
+                )}
+              </>
+            ) : account.authenticated ? (
+              <>
+                <button className="alert-button" aria-label="Ver notificaciones de pedidos" onClick={() => setNotificationsOpen(!notificationsOpen)}><Bell size={21} /><span className="alert-dot" style={{ background: 'var(--blue)' }}>{userOrders.length > 0 ? userOrders.length : 0}</span></button>
+                {notificationsOpen && (
+                  <div className="profile-menu" style={{ right: 0, width: '320px', zIndex: 100 }}>
+                    <h4 style={{ margin: '0 0 10px', fontSize: '14px', color: 'var(--blue)' }}>Estado de tus Pedidos</h4>
+                    <div style={{ maxHeight: '250px', overflowY: 'auto' }}>
+                      {userOrders.slice(0, 5).map(o => (
+                        <div key={o.id} style={{ display: 'flex', flexDirection: 'column', gap: '4px', padding: '8px 0', borderBottom: '1px solid var(--border)', fontSize: '12px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span style={{ fontWeight: 600 }}>Pedido {o.id}</span>
+                            <StatusBadge status={o.status} />
+                          </div>
+                          <span style={{ color: 'var(--muted)' }}>
+                            {o.status === 'pending' ? 'Tu pedido fue realizado correctamente y está esperando pago.' : o.status === 'approved' ? 'El pago fue aprobado y el pedido está en preparación.' : o.status === 'shipped' ? '¡Tu pedido ya está en camino!' : o.status === 'delivered' ? 'El pedido fue entregado. ¡Gracias por elegirnos!' : 'El pedido fue cancelado.'}
+                          </span>
+                        </div>
+                      ))}
+                      {userOrders.length === 0 && <p style={{ fontSize: '12px', color: 'var(--muted)' }}>No tienes pedidos recientes.</p>}
+                    </div>
+                    <button className="secondary" style={{ width: '100%', marginTop: '10px', fontSize: '12px', padding: '8px' }} onClick={() => { setNotificationsOpen(false); setMyOrders(true); }}>Ver mis pedidos</button>
+                  </div>
+                )}
+              </>
+            ) : null}
           </div>
           <button className="theme-button" aria-label="Actualizar stock" title="Actualizar stock" onClick={() => void manualRefresh()} disabled={stockRefreshing} style={{ color: stockRefreshing ? 'var(--accent-line)' : undefined }}><RefreshCw size={19} style={{ animation: stockRefreshing ? 'spin 0.8s linear infinite' : undefined }} /></button>
           {account.authenticated && !account.isAdmin && (

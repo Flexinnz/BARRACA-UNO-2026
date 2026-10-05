@@ -1,5 +1,5 @@
 export interface Category {id:string;name:string}
-export interface Product {id:number;name:string;category:string;sku:string;brand:string;stock:number;price:number;unit:string}
+export interface Product {id:number;name:string;category:string;sku:string;brand:string;stock:number;price:number;unit:string;imageId:number}
 export interface OrderItem {product:Product;quantity:number}
 export const names=['Masonería','Hierros y Estructuras','Herramientas','Sanitaria','Electricidad','Pinturería'];
 export const categories:Category[]=names.map(name=>({id:name,name}));
@@ -64,6 +64,14 @@ const data:[string,number,string,string,number,number,string][]=[
   ['Lija al Agua Grano 220 (hoja)',5,'PIN-220','3M',180,45,'hoja'],
   ['Masilla Plástica 1kg',5,'PIN-060','Bostik',70,520,'lata'],
 ];
-export const defaultProducts:Product[]=data.map((d,i)=>({id:i+1,name:d[0],category:names[d[1]],sku:d[2],brand:d[3],stock:d[4],price:d[5],unit:d[6]}));
+export const defaultProducts:Product[]=data.map((d,i)=>{
+  const id=i+1;
+  const catIndex=d[1];
+  let imageId=id;
+  if (id > 12) {
+    imageId = [1, 3, 5, 7, 9, 11][catIndex] + (id % 2); // reuse images 1-12 based on category
+  }
+  return {id,name:d[0],category:names[catIndex],sku:d[2],brand:d[3],stock:d[4],price:d[5],unit:d[6],imageId};
+});
 
 export interface StockProduct extends Product {version:number;updatedAt:string}
