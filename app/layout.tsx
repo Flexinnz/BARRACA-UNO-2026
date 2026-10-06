@@ -20,7 +20,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es" suppressHydrationWarning>
-      <body className="antialiased"><script dangerouslySetInnerHTML={{__html:`(function(){var t='dark';try{var s=localStorage.getItem('barraca-uno-theme');if(['light','dark','system'].indexOf(s)>=0)t=s;}catch(e){}var v=t==='system'?(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):t;document.documentElement.dataset.theme=v;document.documentElement.style.colorScheme=v;})();`}}/>{children}</body>
+      <body className="antialiased"><script dangerouslySetInnerHTML={{__html:`(function(){var t='light';try{var s=localStorage.getItem('barraca-uno-theme');if(['light','dark','system'].indexOf(s)>=0)t=s;}catch(e){}var v=t==='system'?(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):t;document.documentElement.dataset.theme=v;document.documentElement.style.colorScheme=v;})();`}}/>{children}</body>
     </html>
   );
 }
