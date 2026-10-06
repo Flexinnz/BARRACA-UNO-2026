@@ -668,7 +668,6 @@ export default function Home({ initialProducts = defaultProducts }: { initialPro
               <hr />
               <button onClick={() => { setProfile(false); setProfilePanel(true) }}>{account.authenticated ? 'Personalizar mi perfil' : 'Iniciar sesión'}</button>
               <a href="/cuenta">Mi perfil y cuenta</a>
-              {account.authenticated && account.isAdmin && <a href="/admin" style={{ color: 'var(--action)', fontWeight: 600 }}>Administración (SaaS)</a>}
               {account.authenticated && !account.isAdmin && <button onClick={() => { setProfile(false); setMyOrders(true) }}><ClipboardList size={15} />Mis pedidos y comprobantes</button>}
               <a href="/locales">Nuestros locales</a>
               <a href="/guia">Cómo usar Barraca Uno</a>
@@ -690,6 +689,8 @@ export default function Home({ initialProducts = defaultProducts }: { initialPro
               <div className="side-label" style={{ color: 'var(--accent)', fontWeight: 700, fontSize: '11px', letterSpacing: '0.05em', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <ShieldCheck size={14} /> PANEL ADMINISTRATIVO
               </div>
+              <button onClick={() => f.setCategory('Dashboard Empresarial')} className={`cat-link ${f.category === 'Dashboard Empresarial' ? 'selected' : ''}`} style={{ fontWeight: 600, fontSize: '13px', margin: '3px 0' }}><CheckCircle2 size={16} />Dashboard Empresarial</button>
+              <button onClick={() => f.setCategory('Administración de mercadería')} className={`cat-link ${f.category === 'Administración de mercadería' ? 'selected' : ''}`} style={{ fontWeight: 600, fontSize: '13px', margin: '3px 0' }}><Grid2X2 size={16} />Admin. de mercadería</button>
               <a href="/stock" className="cat-link stock-nav" style={{ fontWeight: 600, fontSize: '13px', margin: '3px 0' }}><Boxes size={16} />Control de stock <Plus size={14} /></a>
               <a href="/pedidos-admin" className="cat-link" style={{ fontWeight: 600, fontSize: '13px', margin: '3px 0' }}><ClipboardList size={16} />Gestión de pedidos</a>
               <a href="/clientes" className="cat-link" style={{ fontWeight: 600, fontSize: '13px', margin: '3px 0' }}><Users size={16} />Gestión de clientes (CRM)</a>
@@ -706,27 +707,33 @@ export default function Home({ initialProducts = defaultProducts }: { initialPro
         </aside>
 
         <main>
-          <div className="breadcrumb">Espacio de trabajo <span>/</span> <b>Inventario</b></div>
-          <div className="page-heading"><CityScape className="heading-city" /><div><div className="eyebrow">CATÁLOGO DE MATERIALES</div><h1>Nuestros Productos</h1><p>Todo lo que necesitás para tu obra, con stock en tiempo real.</p></div><button className="primary order-button" onClick={() => setDrawer(true)}><ShoppingCart size={18} /> Ver carrito {cart.count > 0 && <b>{cart.count}</b>}</button></div>
+          {f.category === 'Dashboard Empresarial' ? (
+            <DashboardSection />
+          ) : f.category === 'Administración de mercadería' ? (
+            <MercaderiaSection />
+          ) : (
+            <>
+              <div className="breadcrumb">Espacio de trabajo <span>/</span> <b>Inventario</b></div>
+              <div className="page-heading"><CityScape className="heading-city" /><div><div className="eyebrow">CATÁLOGO DE MATERIALES</div><h1>Nuestros Productos</h1><p>Todo lo que necesitás para tu obra, con stock en tiempo real.</p></div><button className="primary order-button" onClick={() => setDrawer(true)}><ShoppingCart size={18} /> Ver carrito {cart.count > 0 && <b>{cart.count}</b>}</button></div>
 
-          {stockError && <p className="admin-error" role="alert">{stockError} Actualizá la página para reintentar.</p>}
+              {stockError && <p className="admin-error" role="alert">{stockError} Actualizá la página para reintentar.</p>}
 
-          <section className="stats" aria-label="Resumen de inventario">
-            <div><span className="stat-icon blue"><Boxes size={22} /></span><div><small>Materiales en catálogo</small><strong>{products.length}<span>productos</span></strong></div></div>
-            <div><span className="stat-icon green"><CheckCircle2 size={22} /></span><div><small>Stock disponible</small><strong>{products.filter(p => p.stock > 10).length}<span>en stock</span></strong></div></div>
-            <button onClick={() => { f.setStock('Stock Crítico'); f.setCategory('Todas') }}><span className="stat-icon amber"><TriangleAlert size={22} /></span><div><small>Para reponer</small><strong>{products.filter(p => p.stock > 0 && p.stock <= 10).length}<span>con stock bajo</span></strong></div><ArrowUpRight size={17} /></button>
-            <div><span className="stat-icon rose"><Package size={22} /></span><div><small>Sin disponibilidad</small><strong>{products.filter(p => p.stock === 0).length}<span>agotados</span></strong></div></div>
-          </section>
+              <section className="stats" aria-label="Resumen de inventario">
+                <div><span className="stat-icon blue"><Boxes size={22} /></span><div><small>Materiales en catálogo</small><strong>{products.length}<span>productos</span></strong></div></div>
+                <div><span className="stat-icon green"><CheckCircle2 size={22} /></span><div><small>Stock disponible</small><strong>{products.filter(p => p.stock > 10).length}<span>en stock</span></strong></div></div>
+                <button onClick={() => { f.setStock('Stock Crítico'); f.setCategory('Todas') }}><span className="stat-icon amber"><TriangleAlert size={22} /></span><div><small>Para reponer</small><strong>{products.filter(p => p.stock > 0 && p.stock <= 10).length}<span>con stock bajo</span></strong></div><ArrowUpRight size={17} /></button>
+                <div><span className="stat-icon rose"><Package size={22} /></span><div><small>Sin disponibilidad</small><strong>{products.filter(p => p.stock === 0).length}<span>agotados</span></strong></div></div>
+              </section>
 
-          <section className="catalog">
-            <div className="catalog-heading"><div><h2>Materiales disponibles</h2><span>{f.filtered.length} artículos encontrados</span></div><div className="price-info">Precios en UYU <span>·</span> IVA no incluido</div></div>
-            <div className="toolbar">
-              <label><span>Categoría</span><select value={f.category} onChange={e => f.setCategory(e.target.value)}><option>Todas</option>{categories.map(c => <option key={c.id}>{c.name}</option>)}</select></label>
-              <label><span>Estado de stock</span><select value={f.stock} onChange={e => f.setStock(e.target.value)}>{['Todos', 'Disponible', 'Stock Crítico', 'Agotado'].map(s => <option key={s}>{s}</option>)}</select></label>
-              <label className="sort"><span>Ordenar por</span><select value={f.sort} onChange={e => f.setSort(e.target.value)}>{['Nombre (A-Z)', 'Menor Precio', 'Mayor Precio', 'Menor Stock'].map(s => <option key={s}>{s}</option>)}</select></label>
-              <div className="view-toggle" role="group" aria-label="Vista del catálogo">
-                <button aria-label="Vista de tarjetas" aria-pressed={view === 'grid'} className={view === 'grid' ? 'active' : ''} onClick={() => setView('grid')}><Grid2X2 size={18} /></button>
-                <button aria-label="Vista de tabla" aria-pressed={view === 'table'} className={view === 'table' ? 'active' : ''} onClick={() => setView('table')}><List size={19} /></button>
+              <section className="catalog">
+                <div className="catalog-heading"><div><h2>Materiales disponibles</h2><span>{f.filtered.length} artículos encontrados</span></div><div className="price-info">Precios en UYU <span>·</span> IVA no incluido</div></div>
+                <div className="toolbar">
+                  <label><span>Categoría</span><select value={f.category} onChange={e => f.setCategory(e.target.value)}><option>Todas</option>{categories.map(c => <option key={c.id}>{c.name}</option>)}</select></label>
+                  <label><span>Estado de stock</span><select value={f.stock} onChange={e => f.setStock(e.target.value)}>{['Todos', 'Disponible', 'Stock Crítico', 'Agotado'].map(s => <option key={s}>{s}</option>)}</select></label>
+                  <label className="sort"><span>Ordenar por</span><select value={f.sort} onChange={e => f.setSort(e.target.value)}>{['Nombre (A-Z)', 'Menor Precio', 'Mayor Precio', 'Menor Stock'].map(s => <option key={s}>{s}</option>)}</select></label>
+                  <div className="view-toggle" role="group" aria-label="Vista del catálogo">
+                    <button aria-label="Vista de tarjetas" aria-pressed={view === 'grid'} className={view === 'grid' ? 'active' : ''} onClick={() => setView('grid')}><Grid2X2 size={18} /></button>
+                    <button aria-label="Vista de tabla" aria-pressed={view === 'table'} className={view === 'table' ? 'active' : ''} onClick={() => setView('table')}><List size={19} /></button>
               </div>
             </div>
             {(f.search || f.category !== 'Todas' || f.stock !== 'Todos') && <div className="filter-summary"><span>{f.search && `"${f.search}" · `}{f.category} · {f.stock}</span><button onClick={f.reset}>Limpiar filtros <X size={14} /></button></div>}
@@ -738,6 +745,8 @@ export default function Home({ initialProducts = defaultProducts }: { initialPro
             <footer className="catalog-footer"><span>Mostrando {f.filtered.length} de {products.length} materiales</span><a href="/creditos">Imágenes ilustrativas · Créditos</a></footer>
           </section>
           <footer className="page-footer">© 2026 Barraca Uno <span>Uno para todos.</span></footer>
+            </>
+          )}
         </main>
       </div>
 

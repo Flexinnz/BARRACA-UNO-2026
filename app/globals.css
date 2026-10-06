@@ -1981,18 +1981,18 @@ select {
   --accent-line: #2563eb;
 }
 :root[data-theme="dark"] {
-  --page: #0b3c5d;
-  --surface: #0a3350;
-  --raised: #082942;
+  --page: #0a111a;
+  --surface: #101B2A;
+  --raised: #152438;
   --ink: #ffffff;
-  --soft: #76b9e4;
-  --edge: #0f4a73;
-  --field: #082942;
+  --soft: #859bb3;
+  --edge: #233a57;
+  --field: #0d1521;
   --brand: #ffffff;
   --action: #ffffff;
-  --accent-line: #76b9e4;
-  --muted: #76b9e4;
-  --border: #0f4a73;
+  --accent-line: #3b618f;
+  --muted: #859bb3;
+  --border: #233a57;
   --blue: #ffffff;
 }
 :root[data-accent="sky"] {

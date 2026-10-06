@@ -2,10 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { Save, Plus, Upload, Trash2, Image as ImageIcon, Search, ArrowLeft, RefreshCw, CheckCircle2 } from 'lucide-react';
-import { useTheme, ThemeButton } from '../../profile-panel';
 
-export default function AdminProductsPage() {
-  const { theme, setTheme } = useTheme();
+export function MercaderiaSection() {
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -44,17 +42,11 @@ export default function AdminProductsPage() {
 
   return (
     <div className="admin-page" style={{ paddingBottom: 100 }}>
-      <header className="account-page-header">
-        <a className="account-logo" href="/admin" style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--ink)' }}>
-          <ArrowLeft size={16} /> Volver al Dashboard
-        </a>
-        <ThemeButton theme={theme} setTheme={setTheme} />
-      </header>
 
       <main className="admin-main" style={{ maxWidth: 1200, margin: '0 auto', padding: '40px 20px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 30 }}>
           <div>
-            <div className="eyebrow" style={{ color: 'var(--action)', fontWeight: 700, letterSpacing: 1, fontSize: 11, marginBottom: 8 }}>CATÁLOGO MAESTRO</div>
+            <div className="eyebrow" style={{ color: 'var(--action)', fontWeight: 700, letterSpacing: 1, fontSize: 11, marginBottom: 8 }}>ADMINISTRACIÓN DE MERCADERÍA</div>
             <h1 style={{ fontSize: 32, margin: 0, color: 'var(--ink)' }}>Gestión de Productos</h1>
             <p style={{ color: 'var(--soft)', marginTop: 8 }}>Edita precios, imágenes e impuestos de forma masiva.</p>
           </div>
@@ -107,7 +99,7 @@ export default function AdminProductsPage() {
                   <tr key={p.id} style={{ borderBottom: '1px solid var(--edge)', background: p.changed ? 'var(--raised)' : 'transparent' }}>
                     <td style={{ padding: '8px 16px' }}>
                       <div style={{ width: 40, height: 40, borderRadius: 4, background: 'var(--edge)', display: 'grid', placeItems: 'center', overflow: 'hidden', cursor: 'pointer' }} title="Cambiar imagen">
-                        {p.imageSrc ? <img src={`/images/products/${p.imageSrc}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt={p.name} /> : <ImageIcon size={18} color="var(--soft)" />}
+                        {p.imageSrc || p.imageId ? <img src={p.imageSrc || `/products/${p.imageId}.jpg`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt={p.name} /> : <ImageIcon size={18} color="var(--soft)" />}
                       </div>
                     </td>
                     <td style={{ padding: '8px 16px' }}>

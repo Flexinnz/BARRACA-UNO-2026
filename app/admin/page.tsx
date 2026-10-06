@@ -112,7 +112,7 @@ export default async function AdminDashboard() {
             <p style={{ margin: 0, fontSize: '12px', color: 'var(--soft)' }}>Cambiar estados y ver detalles.</p>
           </a>
           <a href="/admin/products" style={{ background: 'var(--surface)', border: '1px solid var(--edge)', padding: '20px', borderRadius: '8px', display: 'block', color: 'var(--ink)' }}>
-            <h3 style={{ fontSize: '15px', margin: '0 0 5px', color: 'var(--action)' }}>Catálogo Maestro</h3>
+            <h3 style={{ fontSize: '15px', margin: '0 0 5px', color: 'var(--action)' }}>Administración de mercadería</h3>
             <p style={{ margin: 0, fontSize: '12px', color: 'var(--soft)' }}>Agregar productos, fotos, precios e impuestos.</p>
           </a>
           <a href="/stock" style={{ background: 'var(--surface)', border: '1px solid var(--edge)', padding: '20px', borderRadius: '8px', display: 'block', color: 'var(--ink)' }}>
