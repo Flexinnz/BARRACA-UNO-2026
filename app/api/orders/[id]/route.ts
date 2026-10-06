@@ -1,6 +1,7 @@
 import {getChatGPTUser} from '../../../chatgpt-auth';
 import {isCompanyAdmin} from '../../../../lib/accounts';
 import {profileDb} from '../../../../db/profiles';
+import {sendOrderStatusUpdatedEmail} from '../../../../lib/email';
 
 export const dynamic='force-dynamic';
 
@@ -36,7 +37,6 @@ export async function PATCH(req:Request,{params}:{params:{id:string}}){
     try {
       const orderUser = await db.prepare('SELECT user_email, user_name, total FROM orders WHERE id=?').bind(params.id).first<{user_email:string,user_name:string,total:number}>();
       if (orderUser) {
-        const { sendOrderStatusUpdatedEmail } = await import('../../../../lib/email');
         await sendOrderStatusUpdatedEmail({
           orderId: params.id,
           customerEmail: orderUser.user_email,

@@ -2,6 +2,7 @@ import {getChatGPTUser} from '../../chatgpt-auth';
 import {profileDb} from '../../../db/profiles';
 import {ensureAccount,accountEnabled,isCompanyAdmin} from '../../../lib/accounts';
 import {defaultProfile,validateProfile,UserProfile} from '../../../lib/profile';
+import {sendEmail} from '../../../lib/email';
 
 export const dynamic='force-dynamic';
 const json=(body:unknown,status=200)=>Response.json(body,{status,headers:{'Cache-Control':'no-store'}});
@@ -33,7 +34,6 @@ export async function PUT(request:Request){
     
     if (isNew) {
       try {
-        const { sendEmail } = await import('../../../lib/email');
         await sendEmail({
           to: user.email,
           subject: '¡Bienvenido a Barraca Uno!',

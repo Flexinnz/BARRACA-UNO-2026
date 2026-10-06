@@ -1,6 +1,7 @@
 import {getChatGPTUser} from '../../chatgpt-auth';
 import {ensureAccount,accountEnabled,isCompanyAdmin} from '../../../lib/accounts';
 import {profileDb} from '../../../db/profiles';
+import {sendOrderConfirmationEmail} from '../../../lib/email';
 
 export const dynamic='force-dynamic';
 
@@ -92,7 +93,6 @@ export async function POST(req:Request){
 
   // Send Email Notification via robust email module
   try {
-    const { sendOrderConfirmationEmail } = await import('../../../lib/email');
     await sendOrderConfirmationEmail({
       orderId,
       customerEmail: user.email,
