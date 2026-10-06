@@ -1,6 +1,5 @@
 "use client";
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import Link from 'next/link';
 import { Dialog } from './modal';
 import { BrandLogo, CityScape } from './brand-art';
 import { GalleryProvider, useProductGallery } from './product-gallery';
@@ -668,10 +667,10 @@ export default function Home({ initialProducts = defaultProducts }: { initialPro
               {account.profile?.company && <small style={{ color: 'var(--accent)', fontWeight: 600 }}>{account.profile.company}</small>}
               <hr />
               <button onClick={() => { setProfile(false); setProfilePanel(true) }}>{account.authenticated ? 'Personalizar mi perfil' : 'Iniciar sesión'}</button>
-              <Link href="/cuenta">Mi perfil y cuenta</Link>
+              <a href="/cuenta">Mi perfil y cuenta</a>
               {account.authenticated && !account.isAdmin && <button onClick={() => { setProfile(false); setMyOrders(true) }}><ClipboardList size={15} />Mis pedidos y comprobantes</button>}
-              <Link href="/locales">Nuestros locales</Link>
-              <Link href="/guia">Cómo usar Barraca Uno</Link>
+              <a href="/locales">Nuestros locales</a>
+              <a href="/guia">Cómo usar Barraca Uno</a>
               {account.authenticated && <a href="/auth/logout" target="_top">Cerrar sesión</a>}
             </div>}
           </div>
@@ -690,14 +689,14 @@ export default function Home({ initialProducts = defaultProducts }: { initialPro
               <div className="side-label" style={{ color: 'var(--accent)', fontWeight: 700, fontSize: '11px', letterSpacing: '0.05em', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <ShieldCheck size={14} /> PANEL ADMINISTRATIVO
               </div>
-              <Link href="/stock" className="cat-link stock-nav" style={{ fontWeight: 600, fontSize: '13px', margin: '3px 0' }}><Boxes size={16} />Control de stock <Plus size={14} /></Link>
-              <Link href="/pedidos-admin" className="cat-link" style={{ fontWeight: 600, fontSize: '13px', margin: '3px 0' }}><ClipboardList size={16} />Gestión de pedidos</Link>
-              <Link href="/clientes" className="cat-link" style={{ fontWeight: 600, fontSize: '13px', margin: '3px 0' }}><Users size={16} />Gestión de clientes (CRM)</Link>
-              <Link href="/administracion" className="cat-link" style={{ fontWeight: 600, fontSize: '13px', margin: '3px 0' }}><ShieldCheck size={16} />Seguridad y cuentas</Link>
+              <a href="/stock" className="cat-link stock-nav" style={{ fontWeight: 600, fontSize: '13px', margin: '3px 0' }}><Boxes size={16} />Control de stock <Plus size={14} /></a>
+              <a href="/pedidos-admin" className="cat-link" style={{ fontWeight: 600, fontSize: '13px', margin: '3px 0' }}><ClipboardList size={16} />Gestión de pedidos</a>
+              <a href="/clientes" className="cat-link" style={{ fontWeight: 600, fontSize: '13px', margin: '3px 0' }}><Users size={16} />Gestión de clientes (CRM)</a>
+              <a href="/administracion" className="cat-link" style={{ fontWeight: 600, fontSize: '13px', margin: '3px 0' }}><ShieldCheck size={16} />Seguridad y cuentas</a>
             </div>
           )}
 
-          <Link href="/locales" className="cat-link"><Building2 size={17} />Nuestros locales</Link>
+          <a href="/locales" className="cat-link"><Building2 size={17} />Nuestros locales</a>
           <div className="side-label category-label">CATEGORÍAS</div>
           <button className={`cat-link ${f.category === 'Todas' ? 'selected' : ''}`} onClick={() => f.setCategory('Todas')}><Grid2X2 size={17} />Todos los materiales<span>{products.length}</span></button>
           {categories.map(c => { const Icon = icons[c.name]; return <button key={c.id} className={`cat-link ${f.category === c.name ? 'selected' : ''}`} onClick={() => f.setCategory(c.name)}><Icon size={17} />{c.name}<span>{products.filter(p => p.category === c.name).length}</span></button> })}
@@ -735,7 +734,7 @@ export default function Home({ initialProducts = defaultProducts }: { initialPro
               : view === 'grid'
                 ? <div className="product-grid">{f.filtered.map(p => <ProductCard key={p.id} p={p} onAdd={add} />)}</div>
                 : <div className="table-scroll"><table><thead><tr><th>Material / SKU</th><th>Categoría</th><th>Stock</th><th>Precio unitario</th><th>Cantidad</th><th /></tr></thead><tbody>{f.filtered.map(p => <ProductCard table key={p.id} p={p} onAdd={add} />)}</tbody></table></div>}
-            <footer className="catalog-footer"><span>Mostrando {f.filtered.length} de {products.length} materiales</span><Link href="/creditos">Imágenes ilustrativas · Créditos</Link></footer>
+            <footer className="catalog-footer"><span>Mostrando {f.filtered.length} de {products.length} materiales</span><a href="/creditos">Imágenes ilustrativas · Créditos</a></footer>
           </section>
           <footer className="page-footer">© 2026 Barraca Uno <span>Uno para todos.</span></footer>
         </main>
