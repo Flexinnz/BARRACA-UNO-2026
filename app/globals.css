@@ -11,7 +11,9 @@ body {
   margin: 0;
   background: var(--page);
   color: var(--ink);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, sans-serif;
   font-size: 14px;
 }
 
@@ -222,7 +224,9 @@ a {
   padding: 20px;
   width: 245px;
   border-radius: 6px;
-  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  box-shadow:
+    0 4px 6px -1px rgb(0 0 0 / 0.1),
+    0 2px 4px -2px rgb(0 0 0 / 0.1);
 }
 .profile-menu small {
   display: block;
@@ -1977,19 +1981,19 @@ select {
   --accent-line: #2563eb;
 }
 :root[data-theme="dark"] {
-  --page: #09090b;
-  --surface: #141415;
-  --raised: #1e1e20;
-  --ink: #ededed;
-  --soft: #a1a1aa;
-  --edge: #27272a;
-  --field: #18181b;
+  --page: #0b3c5d;
+  --surface: #0a3350;
+  --raised: #082942;
+  --ink: #ffffff;
+  --soft: #76b9e4;
+  --edge: #0f4a73;
+  --field: #082942;
   --brand: #ffffff;
-  --action: #ededed;
-  --accent-line: #3f3f46;
-  --muted: #a1a1aa;
-  --border: #27272a;
-  --blue: #ededed;
+  --action: #ffffff;
+  --accent-line: #76b9e4;
+  --muted: #76b9e4;
+  --border: #0f4a73;
+  --blue: #ffffff;
 }
 :root[data-accent="sky"] {
   --action: #076e9c;
@@ -5473,4 +5477,20 @@ legend {
   flex-wrap: wrap;
   padding-top: 14px;
   border-top: 1px solid var(--border);
+}
+
+/* Better integration for banners in Dark Mode */
+:root[data-theme="dark"] .page-heading {
+  background: transparent;
+  border-bottom-color: var(--edge);
+}
+:root[data-theme="dark"] .page-heading:before {
+  opacity: 0.1;
+}
+:root[data-theme="dark"] .sidebar-note {
+  background-color: var(--surface);
+  border: 1px solid var(--edge);
+}
+:root[data-theme="dark"] .sidebar-note:before {
+  opacity: 0.15;
 }

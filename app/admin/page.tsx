@@ -111,9 +111,13 @@ export default async function AdminDashboard() {
             <h3 style={{ fontSize: '15px', margin: '0 0 5px' }}>Órdenes</h3>
             <p style={{ margin: 0, fontSize: '12px', color: 'var(--soft)' }}>Cambiar estados y ver detalles.</p>
           </a>
+          <a href="/admin/products" style={{ background: 'var(--surface)', border: '1px solid var(--edge)', padding: '20px', borderRadius: '8px', display: 'block', color: 'var(--ink)' }}>
+            <h3 style={{ fontSize: '15px', margin: '0 0 5px', color: 'var(--action)' }}>Catálogo Maestro</h3>
+            <p style={{ margin: 0, fontSize: '12px', color: 'var(--soft)' }}>Agregar productos, fotos, precios e impuestos.</p>
+          </a>
           <a href="/stock" style={{ background: 'var(--surface)', border: '1px solid var(--edge)', padding: '20px', borderRadius: '8px', display: 'block', color: 'var(--ink)' }}>
-            <h3 style={{ fontSize: '15px', margin: '0 0 5px' }}>Inventario</h3>
-            <p style={{ margin: 0, fontSize: '12px', color: 'var(--soft)' }}>Modificar precios y stock real.</p>
+            <h3 style={{ fontSize: '15px', margin: '0 0 5px' }}>Movimientos de Stock</h3>
+            <p style={{ margin: 0, fontSize: '12px', color: 'var(--soft)' }}>Registrar entradas, salidas y conteos del depósito.</p>
           </a>
         </div>
 

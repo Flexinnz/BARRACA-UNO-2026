@@ -24,21 +24,21 @@ export async function getEmailConfig(): Promise<{ apiKey: string | null; fromEma
     const db = profileDb();
     await db.prepare(`CREATE TABLE IF NOT EXISTS app_config (key TEXT PRIMARY KEY, value TEXT, updated_at TEXT)`).run();
 
-    const keyRow = await db.prepare("SELECT value FROM app_config WHERE key = 'brevo_api_key'").first<{ value: string }>();
+    const keyRow = await db.prepare("SELECT value FROM app_config WHERE key = 'resend_api_key'").first<{ value: string }>();
     if (keyRow?.value) dbKey = keyRow.value.trim();
 
-    const fromRow = await db.prepare("SELECT value FROM app_config WHERE key = 'brevo_from'").first<{ value: string }>();
+    const fromRow = await db.prepare("SELECT value FROM app_config WHERE key = 'resend_from'").first<{ value: string }>();
     if (fromRow?.value) dbFrom = fromRow.value.trim();
 
-    const fromNameRow = await db.prepare("SELECT value FROM app_config WHERE key = 'brevo_from_name'").first<{ value: string }>();
+    const fromNameRow = await db.prepare("SELECT value FROM app_config WHERE key = 'resend_from_name'").first<{ value: string }>();
     if (fromNameRow?.value) dbFromName = fromNameRow.value.trim();
   } catch (e) {
     console.warn('Could not query app_config for email settings', e);
   }
 
-  const envKey = (typeof process !== 'undefined' && process.env?.BREVO_API_KEY) || null;
-  const envFrom = (typeof process !== 'undefined' && process.env?.BREVO_FROM) || null;
-  const envFromName = (typeof process !== 'undefined' && process.env?.BREVO_FROM_NAME) || null;
+  const envKey = (typeof process !== 'undefined' && process.env?.resend_API_KEY) || null;
+  const envFrom = (typeof process !== 'undefined' && process.env?.resend_FROM) || null;
+  const envFromName = (typeof process !== 'undefined' && process.env?.resend_FROM_NAME) || null;
 
   const apiKey = dbKey || envKey || cachedApiKey;
 
@@ -67,13 +67,13 @@ export async function saveEmailConfig(apiKey?: string, fromEmail?: string): Prom
   if (typeof apiKey === 'string') {
     const cleanKey = apiKey.trim();
     cachedApiKey = cleanKey;
-    await db.prepare(`INSERT INTO app_config (key, value, updated_at) VALUES ('brevo_api_key', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`).bind(cleanKey, now).run();
+    await db.prepare(`INSERT INTO app_config (key, value, updated_at) VALUES ('resend_api_key', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`).bind(cleanKey, now).run();
   }
 
   if (typeof fromEmail === 'string') {
     const cleanFrom = fromEmail.trim();
     cachedFromEmail = cleanFrom;
-    await db.prepare(`INSERT INTO app_config (key, value, updated_at) VALUES ('brevo_from', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`).bind(cleanFrom, now).run();
+    await db.prepare(`INSERT INTO app_config (key, value, updated_at) VALUES ('resend_from', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`).bind(cleanFrom, now).run();
   }
 }
 
@@ -107,7 +107,7 @@ export async function sendEmail({ to, subject, html, replyTo }: { to: string; su
   const { apiKey, fromEmail, fromName } = await getEmailConfig();
 
   if (!apiKey) {
-    const msg = 'BREVO_API_KEY no configurada. Ingresala en /administracion bajo Configuracion de Correo (Brevo).';
+    const msg = 'resend_API_KEY no configurada. Ingresala en /administracion bajo Configuracion de Correo (resend).';
     console.warn(msg);
     await logEmailAttempt({ recipient: to, subject, status: 'failed', errorMessage: msg });
     return { success: false, error: msg };
@@ -115,41 +115,34 @@ export async function sendEmail({ to, subject, html, replyTo }: { to: string; su
 
   try {
     const body = {
-      sender: { name: fromName, email: fromEmail },
-      to: [{ email: to }],
+      from: `${fromName} <${fromEmail}>`,
+      to: [to],
       subject,
-      htmlContent: html,
-      ...(replyTo ? { replyTo: { email: replyTo } } : {}),
+      html,
+      ...(replyTo ? { reply_to: replyTo } : {}),
     };
 
-    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+    const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
-      headers: { 'api-key': apiKey, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
 
-    const data = await response.json() as { messageId?: string; message?: string; code?: string };
+    const data = await response.json() as { id?: string; message?: string; name?: string };
 
     if (!response.ok) {
-      let errorMsg = data.message || `Error ${response.status} de Brevo`;
-      if (response.status === 401) {
-        errorMsg = 'API Key de Brevo invalida o revocada. Revisa la clave en /administracion.';
-      } else if (response.status === 400 && data.message?.toLowerCase().includes('sender')) {
-        errorMsg = `El correo remitente "${fromEmail}" no esta verificado en Brevo. Anda a app.brevo.com → Senders & IPs → Add a Sender y verifica tu correo Gmail.`;
-      } else if (response.status === 429) {
-        errorMsg = 'Limite de envios de Brevo alcanzado. El plan gratuito permite 300 emails/dia.';
-      }
-      console.error('Brevo API error:', errorMsg, data);
+      let errorMsg = data.message || `Error ${response.status} de Resend`;
+      console.error('Resend API error:', errorMsg, data);
       await logEmailAttempt({ recipient: to, subject, status: 'failed', errorMessage: errorMsg });
       return { success: false, error: errorMsg };
     }
 
-    const emailId = data.messageId;
+    const emailId = data.id;
     await logEmailAttempt({ recipient: to, subject, status: 'delivered', resendId: emailId });
     return { success: true, id: emailId };
   } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : 'Error de conexion al enviar correo con Brevo.';
-    console.error('Exception calling Brevo:', err);
+    const errorMsg = err instanceof Error ? err.message : 'Error de conexion al enviar correo con Resend.';
+    console.error('Exception calling Resend:', err);
     await logEmailAttempt({ recipient: to, subject, status: 'failed', errorMessage: errorMsg });
     return { success: false, error: errorMsg };
   }
