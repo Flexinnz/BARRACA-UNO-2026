@@ -1,18 +1,34 @@
 @import "tailwindcss";
 :root {
-  --blue: #0b3c5d;
-  --muted: #64748b;
-  --border: #e2e8f0;
+  --blue: #0f172a;
+  --muted: #6b7280;
+  --border: #e5e7eb;
 }
 * {
   box-sizing: border-box;
 }
 body {
   margin: 0;
-  background: #f8fafc;
-  color: #0f172a;
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--page);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   font-size: 14px;
+}
+
+/* Scrollbar styles */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--edge);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--soft);
 }
 button,
 input,
@@ -80,7 +96,7 @@ a {
   color: white;
   display: grid;
   place-items: center;
-  border-radius: 10px;
+  border-radius: 6px;
   position: relative;
 }
 .brand-mark img {
@@ -205,8 +221,8 @@ a {
   border: 1px solid var(--border);
   padding: 20px;
   width: 245px;
-  border-radius: 12px;
-  box-shadow: 0 12px 30px #0f172a16;
+  border-radius: 6px;
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
 }
 .profile-menu small {
   display: block;
@@ -1949,31 +1965,31 @@ select {
 }
 /* Temas y preferencias de cuenta */
 :root {
-  --page: #f3f6f9;
-  --surface: #fff;
-  --raised: #f8fafc;
-  --ink: #0f172a;
-  --soft: #64748b;
-  --edge: #dce4ec;
-  --field: #fff;
-  --brand: #062b65;
-  --action: #062b65;
-  --accent-line: #078dc1;
+  --page: #f8f9fa;
+  --surface: #ffffff;
+  --raised: #f1f3f5;
+  --ink: #111827;
+  --soft: #4b5563;
+  --edge: #e5e7eb;
+  --field: #ffffff;
+  --brand: #0f172a;
+  --action: #2563eb;
+  --accent-line: #2563eb;
 }
 :root[data-theme="dark"] {
-  --page: #0c131e;
-  --surface: #131f2e;
-  --raised: #19283a;
-  --ink: #e6edf5;
-  --soft: #a1b1c4;
-  --edge: #2a3a4d;
-  --field: #101b2a;
-  --brand: #80cfee;
-  --action: #086ba5;
-  --accent-line: #21a9d6;
-  --muted: #a1b1c4;
-  --border: #2a3a4d;
-  --blue: #80cfee;
+  --page: #09090b;
+  --surface: #141415;
+  --raised: #1e1e20;
+  --ink: #ededed;
+  --soft: #a1a1aa;
+  --edge: #27272a;
+  --field: #18181b;
+  --brand: #ffffff;
+  --action: #3b82f6;
+  --accent-line: #3b82f6;
+  --muted: #a1a1aa;
+  --border: #27272a;
+  --blue: #3b82f6;
 }
 :root[data-accent="sky"] {
   --action: #076e9c;
@@ -5457,53 +5473,4 @@ legend {
   flex-wrap: wrap;
   padding-top: 14px;
   border-top: 1px solid var(--border);
-}
-
-/* HUMAN CRAFTED ENTERPRISE OVERRIDES */
-:root, :root[data-theme="dark"], :root[data-theme="light"] {
-  --page: #f8f9fa !important;
-  --surface: #ffffff !important;
-  --raised: #f1f3f5 !important;
-  --ink: #212529 !important;
-  --soft: #495057 !important;
-  --edge: #dee2e6 !important;
-  --field: #ffffff !important;
-  --brand: #0a2540 !important;
-  --action: #0066cc !important;
-  --accent-line: #0066cc !important;
-  --muted: #6c757d !important;
-  --border: #dee2e6 !important;
-  --blue: #0a2540 !important;
-}
-
-body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
-}
-
-* {
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-}
-
-.product-card, .header, .stats > div, .stats > button, .toolbar, .primary, .secondary, input, select, .quantity, .view-toggle, .account-logo, .real-logo {
-  border-radius: 4px !important;
-}
-
-.product-card {
-  box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
-  transition: border-color 0.15s !important;
-}
-.product-card:hover {
-  transform: none !important;
-  border-color: var(--action) !important;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.05) !important;
-}
-
-.dialog {
-  border-radius: 8px !important;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.1) !important;
-}
-
-.overlay, .gallery-overlay {
-  background: rgba(10, 37, 64, 0.75) !important;
 }
