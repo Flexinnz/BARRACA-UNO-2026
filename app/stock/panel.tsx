@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { Boxes, Plus, Minus, ClipboardCheck, Search, RefreshCw, X, ArrowUpRight, History } from 'lucide-react';
 import { BrandLogo } from '../brand-art';
 import { useTheme, ThemeButton } from '../profile-panel';
@@ -54,6 +55,7 @@ export function StockPanel() {
     } finally { setLoading(false); }
   };
 
+  // eslint-disable-next-line
   useEffect(() => { void load(); }, []);
 
   const start = (product: StockProduct, type: string) => {
@@ -84,9 +86,9 @@ export function StockPanel() {
   return (
     <div className="admin-page stock-page">
       <header className="account-page-header">
-        <a className="account-logo" href="/"><BrandLogo /></a>
-        <a className="back-catalog" href="/">Volver al catálogo</a>
-        <a className="back-catalog" href="/locales">Nuestros locales</a>
+        <Link className="account-logo" href="/"><BrandLogo /></Link>
+        <Link className="back-catalog" href="/">Volver al catálogo</Link>
+        <Link className="back-catalog" href="/locales">Nuestros locales</Link>
         <ThemeButton theme={theme} setTheme={setTheme} />
       </header>
 
@@ -97,7 +99,7 @@ export function StockPanel() {
             <h1>El stock, al día.</h1>
             <p>Registrá lo que entra, lo que sale y lo que contás en el depósito.</p>
           </div>
-          <a className="secondary stock-catalog-link" href="/">Ver catálogo <ArrowUpRight size={16} /></a>
+          <Link className="secondary stock-catalog-link" href="/">Ver catálogo <ArrowUpRight size={16} /></Link>
         </div>
 
         <section className="admin-stats" aria-label="Resumen de stock">

@@ -1,5 +1,6 @@
 "use client";
 import { useState, useMemo, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { Dialog } from './modal';
 import { BrandLogo, CityScape } from './brand-art';
 import { GalleryProvider, useProductGallery } from './product-gallery';
@@ -667,10 +668,10 @@ export default function Home({ initialProducts = defaultProducts }: { initialPro
               {account.profile?.company && <small style={{ color: 'var(--accent)', fontWeight: 600 }}>{account.profile.company}</small>}
               <hr />
               <button onClick={() => { setProfile(false); setProfilePanel(true) }}>{account.authenticated ? 'Personalizar mi perfil' : 'Iniciar sesión'}</button>
-              <a href="/cuenta">Mi perfil y cuenta</a>
+              <Link href="/cuenta">Mi perfil y cuenta</Link>
               {account.authenticated && !account.isAdmin && <button onClick={() => { setProfile(false); setMyOrders(true) }}><ClipboardList size={15} />Mis pedidos y comprobantes</button>}
-              <a href="/locales">Nuestros locales</a>
-              <a href="/guia">Cómo usar Barraca Uno</a>
+              <Link href="/locales">Nuestros locales</Link>
+              <Link href="/guia">Cómo usar Barraca Uno</Link>
               {account.authenticated && <a href="/auth/logout" target="_top">Cerrar sesión</a>}
             </div>}
           </div>
@@ -689,14 +690,14 @@ export default function Home({ initialProducts = defaultProducts }: { initialPro
               <div className="side-label" style={{ color: 'var(--accent)', fontWeight: 700, fontSize: '11px', letterSpacing: '0.05em', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <ShieldCheck size={14} /> PANEL ADMINISTRATIVO
               </div>
-              <a href="/stock" className="cat-link stock-nav" style={{ fontWeight: 600, fontSize: '13px', margin: '3px 0' }}><Boxes size={16} />Control de stock <Plus size={14} /></a>
-              <a href="/pedidos-admin" className="cat-link" style={{ fontWeight: 600, fontSize: '13px', margin: '3px 0' }}><ClipboardList size={16} />Gestión de pedidos</a>
-              <a href="/clientes" className="cat-link" style={{ fontWeight: 600, fontSize: '13px', margin: '3px 0' }}><Users size={16} />Gestión de clientes (CRM)</a>
-              <a href="/administracion" className="cat-link" style={{ fontWeight: 600, fontSize: '13px', margin: '3px 0' }}><ShieldCheck size={16} />Seguridad y cuentas</a>
+              <Link href="/stock" className="cat-link stock-nav" style={{ fontWeight: 600, fontSize: '13px', margin: '3px 0' }}><Boxes size={16} />Control de stock <Plus size={14} /></Link>
+              <Link href="/pedidos-admin" className="cat-link" style={{ fontWeight: 600, fontSize: '13px', margin: '3px 0' }}><ClipboardList size={16} />Gestión de pedidos</Link>
+              <Link href="/clientes" className="cat-link" style={{ fontWeight: 600, fontSize: '13px', margin: '3px 0' }}><Users size={16} />Gestión de clientes (CRM)</Link>
+              <Link href="/administracion" className="cat-link" style={{ fontWeight: 600, fontSize: '13px', margin: '3px 0' }}><ShieldCheck size={16} />Seguridad y cuentas</Link>
             </div>
           )}
 
-          <a href="/locales" className="cat-link"><Building2 size={17} />Nuestros locales</a>
+          <Link href="/locales" className="cat-link"><Building2 size={17} />Nuestros locales</Link>
           <div className="side-label category-label">CATEGORÍAS</div>
           <button className={`cat-link ${f.category === 'Todas' ? 'selected' : ''}`} onClick={() => f.setCategory('Todas')}><Grid2X2 size={17} />Todos los materiales<span>{products.length}</span></button>
           {categories.map(c => { const Icon = icons[c.name]; return <button key={c.id} className={`cat-link ${f.category === c.name ? 'selected' : ''}`} onClick={() => f.setCategory(c.name)}><Icon size={17} />{c.name}<span>{products.filter(p => p.category === c.name).length}</span></button> })}
@@ -706,7 +707,7 @@ export default function Home({ initialProducts = defaultProducts }: { initialPro
 
         <main>
           <div className="breadcrumb">Espacio de trabajo <span>/</span> <b>Inventario</b></div>
-          <div className="page-heading"><CityScape className="heading-city" /><div><div className="eyebrow">BARRACA UNO / MATERIALES</div><h1>Manos a la obra.</h1><p>Buscá el material. Revisá el stock. Armá tu pedido.</p></div><button className="primary order-button" onClick={() => setDrawer(true)}><ShoppingCart size={18} /> Ver mi orden {cart.count > 0 && <b>{cart.count}</b>}</button></div>
+          <div className="page-heading"><CityScape className="heading-city" /><div><div className="eyebrow">CATÁLOGO DE MATERIALES</div><h1>Nuestros Productos</h1><p>Todo lo que necesitás para tu obra, con stock en tiempo real.</p></div><button className="primary order-button" onClick={() => setDrawer(true)}><ShoppingCart size={18} /> Ver carrito {cart.count > 0 && <b>{cart.count}</b>}</button></div>
 
           {stockError && <p className="admin-error" role="alert">{stockError} Actualizá la página para reintentar.</p>}
 
@@ -718,7 +719,7 @@ export default function Home({ initialProducts = defaultProducts }: { initialPro
           </section>
 
           <section className="catalog">
-            <div className="catalog-heading"><div><h2>El catálogo de la barraca</h2><span>{f.filtered.length} productos encontrados</span></div><div className="price-info">Precios en UYU <span>·</span> IVA no incluido</div></div>
+            <div className="catalog-heading"><div><h2>Materiales disponibles</h2><span>{f.filtered.length} artículos encontrados</span></div><div className="price-info">Precios en UYU <span>·</span> IVA no incluido</div></div>
             <div className="toolbar">
               <label><span>Categoría</span><select value={f.category} onChange={e => f.setCategory(e.target.value)}><option>Todas</option>{categories.map(c => <option key={c.id}>{c.name}</option>)}</select></label>
               <label><span>Estado de stock</span><select value={f.stock} onChange={e => f.setStock(e.target.value)}>{['Todos', 'Disponible', 'Stock Crítico', 'Agotado'].map(s => <option key={s}>{s}</option>)}</select></label>
@@ -734,7 +735,7 @@ export default function Home({ initialProducts = defaultProducts }: { initialPro
               : view === 'grid'
                 ? <div className="product-grid">{f.filtered.map(p => <ProductCard key={p.id} p={p} onAdd={add} />)}</div>
                 : <div className="table-scroll"><table><thead><tr><th>Material / SKU</th><th>Categoría</th><th>Stock</th><th>Precio unitario</th><th>Cantidad</th><th /></tr></thead><tbody>{f.filtered.map(p => <ProductCard table key={p.id} p={p} onAdd={add} />)}</tbody></table></div>}
-            <footer className="catalog-footer"><span>Mostrando {f.filtered.length} de {products.length} materiales</span><a href="/creditos">Imágenes ilustrativas · Créditos</a></footer>
+            <footer className="catalog-footer"><span>Mostrando {f.filtered.length} de {products.length} materiales</span><Link href="/creditos">Imágenes ilustrativas · Créditos</Link></footer>
           </section>
           <footer className="page-footer">© 2026 Barraca Uno <span>Uno para todos.</span></footer>
         </main>

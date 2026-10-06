@@ -1,7 +1,7 @@
 import {getChatGPTUser} from '../../../chatgpt-auth';
 import {isCompanyAdmin} from '../../../../lib/accounts';
 import {profileDb} from '../../../../db/profiles';
-import { Resend } from 'resend';
+
 export const dynamic='force-dynamic';
 
 const VALID_STATUSES=['pending','approved','shipped','delivered','cancelled'];

@@ -1,7 +1,8 @@
-﻿import { profileDb } from '../db/profiles';
+import { profileDb } from '../db/profiles';
 
 let cachedApiKey: string | null = null;
 let cachedFromEmail: string | null = null;
+// eslint-disable-next-line prefer-const
 let cachedFromName: string | null = null;
 
 export interface EmailLog {
@@ -26,18 +27,8 @@ export async function getEmailConfig(): Promise<{ apiKey: string | null; fromEma
     const keyRow = await db.prepare("SELECT value FROM app_config WHERE key = 'brevo_api_key'").first<{ value: string }>();
     if (keyRow?.value) dbKey = keyRow.value.trim();
 
-    if (!dbKey) {
-      const legacyRow = await db.prepare("SELECT value FROM app_config WHERE key = 'resend_api_key'").first<{ value: string }>();
-      if (legacyRow?.value) dbKey = legacyRow.value.trim();
-    }
-
     const fromRow = await db.prepare("SELECT value FROM app_config WHERE key = 'brevo_from'").first<{ value: string }>();
     if (fromRow?.value) dbFrom = fromRow.value.trim();
-
-    if (!dbFrom) {
-      const legacyFrom = await db.prepare("SELECT value FROM app_config WHERE key = 'resend_from'").first<{ value: string }>();
-      if (legacyFrom?.value) dbFrom = legacyFrom.value.trim();
-    }
 
     const fromNameRow = await db.prepare("SELECT value FROM app_config WHERE key = 'brevo_from_name'").first<{ value: string }>();
     if (fromNameRow?.value) dbFromName = fromNameRow.value.trim();

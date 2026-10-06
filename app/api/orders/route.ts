@@ -1,7 +1,7 @@
 import {getChatGPTUser} from '../../chatgpt-auth';
 import {ensureAccount,accountEnabled,isCompanyAdmin} from '../../../lib/accounts';
 import {profileDb} from '../../../db/profiles';
-import { Resend } from 'resend';
+
 export const dynamic='force-dynamic';
 
 interface CartItem{productId:number;productName:string;productSku:string;productUnit:string;quantity:number;unitPrice:number}

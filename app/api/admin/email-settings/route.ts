@@ -56,11 +56,11 @@ export async function POST(req: Request) {
 
     const result = await sendEmail({
       to,
-      subject: 'Prueba de conexión con Resend - Barraca Uno',
+      subject: 'Prueba de conexión con Brevo - Barraca Uno',
       html: `
         <div style="font-family: sans-serif; padding: 20px; color: #0f172a;">
-          <h2 style="color: #0B3C5D;">¡Conexión con Resend exitosa!</h2>
-          <p>Este correo de prueba confirma que la integración con <strong>Resend</strong> en Barraca Uno está funcionando al 100%.</p>
+          <h2 style="color: #0B3C5D;">¡Conexión con Brevo exitosa!</h2>
+          <p>Este correo de prueba confirma que la integración con <strong>Brevo</strong> en Barraca Uno está funcionando al 100%.</p>
           <p><strong>Fecha y hora:</strong> ${new Date().toLocaleString('es-UY')}</p>
           <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
           <small style="color: #64748b;">Barraca Uno SaaS · Sistema Empresarial</small>
@@ -71,7 +71,7 @@ export async function POST(req: Request) {
     if (!result.success) {
       return Response.json({
         ok: false,
-        error: result.error || 'Error al enviar correo con Resend.',
+        error: result.error || 'Error al enviar correo con Brevo.',
       }, { status: 400 });
     }
 

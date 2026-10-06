@@ -53,7 +53,7 @@ export default defineConfig(async ({ command }) => {
 
   return {
     server: {
-      allowedHosts: ['.trycloudflare.com', 'localhost', '127.0.0.1'] as any,
+      allowedHosts: ['.trycloudflare.com', 'localhost', '127.0.0.1'] as string[],
       ...(managedLinux
         ? { host: "0.0.0.0" }
         : {}),
