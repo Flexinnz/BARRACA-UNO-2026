@@ -668,6 +668,7 @@ export default function Home({ initialProducts = defaultProducts }: { initialPro
               <hr />
               <button onClick={() => { setProfile(false); setProfilePanel(true) }}>{account.authenticated ? 'Personalizar mi perfil' : 'Iniciar sesión'}</button>
               <a href="/cuenta">Mi perfil y cuenta</a>
+              {account.authenticated && account.isAdmin && <a href="/admin" style={{ color: 'var(--action)', fontWeight: 600 }}>Administración (SaaS)</a>}
               {account.authenticated && !account.isAdmin && <button onClick={() => { setProfile(false); setMyOrders(true) }}><ClipboardList size={15} />Mis pedidos y comprobantes</button>}
               <a href="/locales">Nuestros locales</a>
               <a href="/guia">Cómo usar Barraca Uno</a>

@@ -1985,11 +1985,11 @@ select {
   --edge: #27272a;
   --field: #18181b;
   --brand: #ffffff;
-  --action: #3b82f6;
-  --accent-line: #3b82f6;
+  --action: #ededed;
+  --accent-line: #3f3f46;
   --muted: #a1a1aa;
   --border: #27272a;
-  --blue: #3b82f6;
+  --blue: #ededed;
 }
 :root[data-accent="sky"] {
   --action: #076e9c;
