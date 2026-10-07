@@ -1,8 +1,110 @@
 @import "tailwindcss";
+
 :root {
+  /* Core Dambru SaaS Color Palette */
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+  
+  --popover: #ffffff;
+  --popover-foreground: #0f172a;
+  
+  --primary: #0284c7;
+  --primary-foreground: #ffffff;
+  
+  --secondary: #f1f5f9;
+  --secondary-foreground: #1e293b;
+  
+  --muted: #f8fafc;
+  --muted-foreground: #64748b;
+  
+  --accent: #f1f5f9;
+  --accent-foreground: #0f172a;
+  
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+
+  --success: #10b981;
+  --success-foreground: #ffffff;
+
+  --warning: #f59e0b;
+  --warning-foreground: #ffffff;
+  
+  --border: #e2e8f0;
+  --input: #e2e8f0;
+  --ring: #0284c7;
+
+  --radius: 0.625rem;
+  
+  /* Layout Sizing Tokens */
+  --header-height: 64px;
+  --sidebar-width: 260px;
+  --sidebar-collapsed-width: 72px;
+
+  /* Legacy CSS Compatibility */
   --blue: #0f172a;
-  --muted: #6b7280;
-  --border: #e5e7eb;
+  --page: #f8fafc;
+  --surface: #ffffff;
+  --raised: #f1f5f9;
+  --ink: #0f172a;
+  --soft: #64748b;
+  --edge: #e2e8f0;
+  --field: #ffffff;
+  --brand: #0284c7;
+  --action: #0284c7;
+  --accent-line: #0284c7;
+}
+
+[data-theme="dark"],
+.dark {
+  --background: #090d16;
+  --foreground: #f8fafc;
+  
+  --card: #0f172a;
+  --card-foreground: #f8fafc;
+  
+  --popover: #0f172a;
+  --popover-foreground: #f8fafc;
+  
+  --primary: #38bdf8;
+  --primary-foreground: #090d16;
+  
+  --secondary: #1e293b;
+  --secondary-foreground: #f8fafc;
+  
+  --muted: #131d2e;
+  --muted-foreground: #94a3b8;
+  
+  --accent: #1e293b;
+  --accent-foreground: #f8fafc;
+  
+  --destructive: #f87171;
+  --destructive-foreground: #ffffff;
+
+  --success: #34d399;
+  --success-foreground: #090d16;
+
+  --warning: #fbbf24;
+  --warning-foreground: #090d16;
+  
+  --border: #1e293b;
+  --input: #1e293b;
+  --ring: #38bdf8;
+
+  /* Legacy Dark CSS Compatibility */
+  --blue: #38bdf8;
+  --page: #090d16;
+  --surface: #0f172a;
+  --raised: #152238;
+  --ink: #f8fafc;
+  --soft: #94a3b8;
+  --edge: #1e293b;
+  --field: #0d1522;
+  --brand: #38bdf8;
+  --action: #38bdf8;
+  --accent-line: #0284c7;
 }
 * {
   box-sizing: border-box;
@@ -59,6 +161,10 @@ input:focus-visible,
 select:focus-visible {
   outline: 3px solid #76b9e4;
   outline-offset: 3px;
+}
+option {
+  background: var(--surface) !important;
+  color: var(--ink) !important;
 }
 button {
   border: 0;
@@ -1475,7 +1581,7 @@ main {
   font-size: 13px;
 }
 .page-heading {
-  background: #062b65;
+  background: #041b44;
   color: white;
   padding: 25px 29px 28px;
   margin-bottom: 0;
@@ -1485,17 +1591,7 @@ main {
   border-bottom: 4px solid #078dc1;
   min-height: 146px;
 }
-.page-heading:before {
-  content: "";
-  position: absolute;
-  right: 0;
-  top: 0;
-  width: 290px;
-  height: 100%;
-  background: url("/brand-reference.jpg") center top / 400px auto no-repeat;
-  opacity: 0.19;
-  pointer-events: none;
-}
+
 .page-heading > div,
 .page-heading > button {
   position: relative;
@@ -3681,8 +3777,10 @@ legend {
   bottom: 0;
   width: clamp(150px, 32%, 420px);
   height: auto;
-  opacity: 0.2;
+  opacity: 0.45;
   z-index: 0;
+  mix-blend-mode: screen;
+  filter: grayscale(1) contrast(10);
 }
 :root[data-theme="dark"] .brand-logo-art {
   filter: invert(1) hue-rotate(180deg);
@@ -3692,7 +3790,9 @@ legend {
   filter: brightness(0.72) saturate(0.65);
 }
 :root[data-theme="dark"] .page-heading > .heading-city {
-  opacity: 0.3;
+  opacity: 0.7;
+  mix-blend-mode: screen;
+  filter: grayscale(1) contrast(10);
 }
 @media (max-width: 750px) {
   .real-logo,
@@ -5481,12 +5581,82 @@ legend {
 
 /* Better integration for banners in Dark Mode */
 :root[data-theme="dark"] .page-heading {
-  background: transparent;
+  background: var(--surface);
   border-bottom-color: var(--edge);
 }
-:root[data-theme="dark"] .page-heading:before {
-  opacity: 0.1;
+
+.novedades-banner {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  background: #041b44;
+  color: #fff;
+  padding: 24px 32px;
+  border-radius: 16px;
+  margin-bottom: 32px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 12px 24px rgba(16, 27, 42, 0.15);
 }
+.novedades-banner .novedades-circle {
+  position: absolute;
+  top: -50%;
+  right: -10%;
+  width: 300px;
+  height: 300px;
+  background: radial-gradient(circle, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0) 70%);
+  border-radius: 50%;
+}
+.novedades-banner p {
+  color: rgba(255,255,255,0.85);
+}
+.novedades-banner .novedades-badge {
+  display: inline-block;
+  background: rgba(255,255,255,0.2);
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 12px;
+}
+.novedades-item {
+  width: 84px;
+  height: 84px;
+  border-radius: 12px;
+  background: #fff;
+  padding: 4px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+.novedades-item:hover {
+  transform: translateY(-4px);
+}
+
+:root[data-theme="dark"] .novedades-banner {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 12px 24px rgba(0,0,0,0.3);
+  border: 1px solid var(--edge);
+}
+:root[data-theme="dark"] .novedades-banner .novedades-circle {
+  background: radial-gradient(circle, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0) 70%);
+}
+:root[data-theme="dark"] .novedades-banner p {
+  color: var(--soft);
+}
+:root[data-theme="dark"] .novedades-banner .novedades-badge {
+  background: var(--raised);
+  color: var(--accent);
+}
+:root[data-theme="dark"] .novedades-item {
+  background: var(--raised);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  border: 1px solid var(--edge);
+}
+
 :root[data-theme="dark"] .sidebar-note {
   background-color: var(--surface);
   border: 1px solid var(--edge);

@@ -1,5 +1,5 @@
 import { requireChatGPTUser } from '../chatgpt-auth';
-import { isCompanyAdmin } from '../../lib/accounts';
+import { isUserPlatformOrTenantAdmin } from '../../lib/tenant-context';
 import { ClientesPanel } from './panel';
 
 export const dynamic = 'force-dynamic';
@@ -7,7 +7,8 @@ export const metadata = { title: 'Gestión de Clientes (CRM SaaS) | Barraca Uno'
 
 export default async function ClientesPage() {
   const user = await requireChatGPTUser('/clientes');
-  if (!isCompanyAdmin(user)) {
+  const isAdmin = await isUserPlatformOrTenantAdmin(user, 'barraca-uno');
+  if (!isAdmin) {
     return (
       <div className="account-page-main access-state">
         <div className="eyebrow">BARRACA UNO / SaaS CRM</div>

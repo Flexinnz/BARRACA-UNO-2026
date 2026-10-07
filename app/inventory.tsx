@@ -3,6 +3,8 @@ import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Dialog } from './modal';
 import { BrandLogo, CityScape } from './brand-art';
 import { GalleryProvider, useProductGallery } from './product-gallery';
+import { MercaderiaSection } from './admin-mercaderia';
+import { DashboardSection } from './admin-dashboard';
 import { useAccount, useTheme, ThemeButton, Avatar, AccountContent } from './profile-panel';
 import { Package, Search, X, ShoppingCart, Bell, ChevronDown, Grid2X2, List, Plus, Minus, Trash2, Check, Building2, ArrowUpRight, Boxes, TriangleAlert, Paintbrush, Wrench, Zap, Droplets, Layers, FileText, CheckCircle2, Clock, Truck, XCircle, MapPin, CreditCard, Phone, StickyNote, ClipboardList, RefreshCw, Users, ShieldCheck, Award, Sparkles, Copy, Download, QrCode, Star, ArrowRight } from 'lucide-react';
 import { Category, Product, OrderItem, names, categories, defaultProducts, APP_VERSION } from '../lib/catalog';
@@ -53,6 +55,16 @@ const normalize = (s: string) => s.normalize('NFD').replace(/\p{Diacritic}/gu, '
 
 function useFilters(products: Product[]) {
   const [search, setSearch] = useState(''), [category, setCategory] = useState('Todas'), [stock, setStock] = useState('Todos'), [sort, setSort] = useState('Nombre (A-Z)');
+  
+  useEffect(() => {
+    const saved = sessionStorage.getItem('currentSection');
+    if (saved) setCategory(saved);
+  }, []);
+
+  useEffect(() => {
+    sessionStorage.setItem('currentSection', category);
+  }, [category]);
+
   const filtered = useMemo(() => products.filter(p =>
     normalize(`${p.name} ${p.sku} ${p.brand}`).includes(normalize(search)) &&
     (category === 'Todas' || p.category === category) &&
@@ -83,7 +95,12 @@ function Badge({ p }: { p: Product }) {
 }
 function Visual({ p, small = false }: { p: Product; small?: boolean }) {
   const open = useProductGallery();
-  return <button type="button" aria-label={`Ver fotos de ${p.name}`} onClick={() => open(p)} className={`product-visual photo ${small ? 'small' : ''}`}><img src={p.imageSrc || `/products/${p.imageId}.jpg`} alt={`Imagen ilustrativa de ${p.name}`} loading="lazy" />{!small && <span className="photo-brand">{p.brand}</span>}<span className="photo-expand">Ver fotos ↗</span></button>;
+  let mainPhoto = p.imageSrc;
+  if (mainPhoto && mainPhoto.startsWith('[')) {
+    try { mainPhoto = JSON.parse(mainPhoto)[0]; } catch(e) {}
+  }
+  mainPhoto = mainPhoto || `/products/${p.imageId || 1}.jpg`;
+  return <button type="button" aria-label={`Ver fotos de ${p.name}`} onClick={() => open(p)} className={`product-visual photo ${small ? 'small' : ''}`}><img src={mainPhoto} alt={`Imagen ilustrativa de ${p.name}`} loading="lazy" />{!small && <span className="photo-brand">{p.brand}</span>}<span className="photo-expand">Ver fotos ↗</span></button>;
 }
 function ProductCard({ p, onAdd, table = false }: { p: Product; onAdd: (p: Product, q: number) => void; table?: boolean }) {
   const [q, setQ] = useState(1), [added, setAdded] = useState(false);
@@ -586,7 +603,7 @@ export default function Home({ initialProducts = defaultProducts }: { initialPro
     <GalleryProvider>
       {/* ── Header ── */}
       <header className="header">
-        <a className="brand" href="/" aria-label="Barraca Uno inicio"><span className="real-logo"><BrandLogo /></span><span className="brand-divider" /><span className="brand-context">Barraca<small>Inventario y compras</small></span></a>
+        <a className="brand" href="/" onClick={(e) => { e.preventDefault(); f.reset(); sessionStorage.removeItem('currentSection'); }} aria-label="Barraca Uno inicio"><span className="real-logo"><BrandLogo /></span><span className="brand-divider" /><span className="brand-context">Barraca<small>Inventario y compras</small></span></a>
         <div className="global-search"><Search size={19} /><input aria-label="Buscar productos" placeholder="Buscar por material, código SKU, marca..." value={f.search} onChange={e => f.setSearch(e.target.value)} />{f.search && <button aria-label="Limpiar búsqueda" onClick={() => f.setSearch('')}><X size={16} /></button>}</div>
         <div className="header-actions">
           <div style={{ position: 'relative' }}>
@@ -717,6 +734,7 @@ export default function Home({ initialProducts = defaultProducts }: { initialPro
               <div className="page-heading"><CityScape className="heading-city" /><div><div className="eyebrow">CATÁLOGO DE MATERIALES</div><h1>Nuestros Productos</h1><p>Todo lo que necesitás para tu obra, con stock en tiempo real.</p></div><button className="primary order-button" onClick={() => setDrawer(true)}><ShoppingCart size={18} /> Ver carrito {cart.count > 0 && <b>{cart.count}</b>}</button></div>
 
               {stockError && <p className="admin-error" role="alert">{stockError} Actualizá la página para reintentar.</p>}
+
 
               <section className="stats" aria-label="Resumen de inventario">
                 <div><span className="stat-icon blue"><Boxes size={22} /></span><div><small>Materiales en catálogo</small><strong>{products.length}<span>productos</span></strong></div></div>

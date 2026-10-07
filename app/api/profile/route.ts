@@ -1,6 +1,7 @@
 import {getChatGPTUser} from '../../chatgpt-auth';
 import {profileDb} from '../../../db/profiles';
-import {ensureAccount,accountEnabled,isCompanyAdmin} from '../../../lib/accounts';
+import {ensureAccount,accountEnabled} from '../../../lib/accounts';
+import {isUserPlatformOrTenantAdmin} from '../../../lib/tenant-context';
 import {defaultProfile,validateProfile,UserProfile} from '../../../lib/profile';
 import {sendEmail} from '../../../lib/email';
 
@@ -9,7 +10,8 @@ const json=(body:unknown,status=200)=>Response.json(body,{status,headers:{'Cache
 export async function GET(){
  const user=await getChatGPTUser();if(!user)return json({authenticated:false,profile:null});
  try {const account=await ensureAccount(user);if(!accountEnabled(account,user))return json({error:account.status==='deleted'?'El administrador eliminó tu cuenta.':'Tu cuenta está bloqueada.',blocked:true},403);const row=await profileDb().prepare('SELECT display_name AS displayName, email, company, phone, bio, avatar, accent, theme, density, updated_at AS updatedAt FROM profiles WHERE user_id = ?').bind(user.userId).first<UserProfile>();
- return json({authenticated:true,isAdmin:isCompanyAdmin(user),profile:row?{...row,email:user.email}:{...defaultProfile,displayName:user.fullName??user.email.split('@')[0],email:user.email},saved:!!row});
+ const isAdmin = await isUserPlatformOrTenantAdmin(user);
+ return json({authenticated:true,isAdmin,profile:row?{...row,email:user.email}:{...defaultProfile,displayName:user.fullName??user.email.split('@')[0],email:user.email},saved:!!row});
  }catch(error){console.error('Profile read failed',error);return json({error:'No pudimos cargar tu perfil. Intentá nuevamente.'},503)}
 }
 export async function PUT(request:Request){
@@ -29,7 +31,7 @@ export async function PUT(request:Request){
     const existing = await db.prepare('SELECT 1 FROM profiles WHERE user_id=?').bind(user.userId).first();
     const isNew = !existing;
 
-    const result=await db.prepare('INSERT INTO profiles (user_id, email, display_name, company, phone, bio, avatar, accent, theme, density, updated_at) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE EXISTS(SELECT 1 FROM accounts WHERE user_id=? AND (status=\'active\' OR ?=1)) ON CONFLICT(user_id) DO UPDATE SET email=excluded.email, display_name=excluded.display_name, company=excluded.company, phone=excluded.phone, bio=excluded.bio, avatar=excluded.avatar, accent=excluded.accent, theme=excluded.theme, density=excluded.density, updated_at=excluded.updated_at').bind(user.userId,user.email,profile.displayName,profile.company,profile.phone,profile.bio,profile.avatar,profile.accent,profile.theme,profile.density,updatedAt,user.userId,isCompanyAdmin(user)?1:0).run();
+    const result=await db.prepare('INSERT INTO profiles (user_id, email, display_name, company, phone, bio, avatar, accent, theme, density, updated_at) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE EXISTS(SELECT 1 FROM accounts WHERE user_id=? AND status=\'active\') ON CONFLICT(user_id) DO UPDATE SET email=excluded.email, display_name=excluded.display_name, company=excluded.company, phone=excluded.phone, bio=excluded.bio, avatar=excluded.avatar, accent=excluded.accent, theme=excluded.theme, density=excluded.density, updated_at=excluded.updated_at').bind(user.userId,user.email,profile.displayName,profile.company,profile.phone,profile.bio,profile.avatar,profile.accent,profile.theme,profile.density,updatedAt,user.userId).run();
     if(!result.meta.changes)return json({error:'Tu cuenta no está habilitada.',blocked:true},403);
     
     if (isNew) {

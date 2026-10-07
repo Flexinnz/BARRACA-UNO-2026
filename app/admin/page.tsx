@@ -1,127 +1,382 @@
+import React from 'react';
+import Link from 'next/link';
 import { getChatGPTUser } from '../chatgpt-auth';
-import { isCompanyAdmin } from '../../lib/accounts';
-import { profileDb } from '../../db/profiles';
+import { isUserPlatformOrTenantAdmin, resolveTenantContext } from '../../lib/tenant-context';
+import { ordersRepository, tenantUsersRepository } from '../../lib/data';
+import { AppShell, PageContainer } from '@/components/layout';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+  TrendingUp,
+  DollarSign,
+  ShoppingCart,
+  Users,
+  ShieldCheck,
+  Package,
+  Boxes,
+  ArrowUpRight,
+  Clock,
+  CheckCircle2,
+  AlertCircle,
+  ExternalLink,
+} from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
-export default async function AdminDashboard() {
+export default async function AdminDashboardPage() {
   const user = await getChatGPTUser();
-  if (!user || !isCompanyAdmin(user)) {
+  const isAdmin = await isUserPlatformOrTenantAdmin(user, 'barraca-uno');
+
+  if (!user || !isAdmin) {
     return (
-      <main className="admin-main">
-        <div className="account-empty">
-          <div className="login-icon">
-            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-          </div>
-          <h2>Acceso Restringido</h2>
-          <p>Solo los administradores pueden ver el dashboard de la empresa.</p>
-        </div>
-      </main>
+      <AppShell tenantName="Barraca Uno" tenantSlug="barraca-uno" isAdmin={false}>
+        <PageContainer
+          title="Acceso Restringido"
+          eyebrow="Seguridad Dambru SaaS"
+          description="Este panel empresarial requiere rol administrativo en la organización."
+        >
+          <Card className="max-w-md mx-auto text-center p-8 mt-12 border-dashed">
+            <div className="flex justify-center mb-4">
+              <div className="size-12 rounded-full bg-destructive/10 text-destructive flex items-center justify-center">
+                <AlertCircle size={24} />
+              </div>
+            </div>
+            <h2 className="text-lg font-bold text-foreground mb-2">Permisos Insuficientes</h2>
+            <p className="text-sm text-muted-foreground mb-6">
+              Iniciá sesión con una cuenta autorizada de la empresa para acceder a las métricas del negocio.
+            </p>
+            <div className="flex justify-center gap-3">
+              <Button asChild variant="outline">
+                <Link href="/">Ir a Tienda</Link>
+              </Button>
+              <Button asChild>
+                <Link href="/ingresar">Iniciar Sesión</Link>
+              </Button>
+            </div>
+          </Card>
+        </PageContainer>
+      </AppShell>
     );
   }
 
-  const db = profileDb();
-  
-  // Fetch high level stats
-  const orders = await db.prepare('SELECT status, total, created_at FROM orders ORDER BY created_at DESC').all<{status: string, total: number, created_at: string}>();
-  const profiles = await db.prepare('SELECT COUNT(*) as count FROM profiles').first<{count: number}>();
-  
-  const totalRevenue = orders.results.reduce((acc, o) => acc + o.total, 0);
-  const pendingOrders = orders.results.filter(o => o.status === 'pending').length;
-  
+  // 1. Resolver TenantContext y datos mediante Secure Data Layer
+  const context = await resolveTenantContext({ tenantSlug: 'barraca-uno', user });
+  if (!context) {
+    return (
+      <AppShell tenantName="Barraca Uno" tenantSlug="barraca-uno" isAdmin={true}>
+        <PageContainer title="Organización no disponible" description="No se pudo resolver el contexto del tenant." />
+      </AppShell>
+    );
+  }
+
+  const [orders, tenantUsers] = await Promise.all([
+    ordersRepository.getOrders(context, 100),
+    tenantUsersRepository.getTenantUsers(context),
+  ]);
+
+  const totalRevenue = orders.reduce((acc, o) => acc + (o.status !== 'cancelled' ? o.total : 0), 0);
+  const pendingOrders = orders.filter((o) => o.status === 'pending').length;
+  const recentOrders = orders.slice(0, 6);
+
   return (
-    <main className="admin-main">
-      <div className="admin-title">
-        <div>
-          <h1>Dashboard Empresarial</h1>
-          <span className="admin-badge">
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-            Administración Segura
-          </span>
-        </div>
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <a href="/pedidos-admin" className="primary">Gestión de Pedidos</a>
-          <a href="/stock" className="primary" style={{ background: 'var(--surface)', color: 'var(--ink)', border: '1px solid var(--edge)' }}>Inventario</a>
-        </div>
-      </div>
+    <AppShell
+      tenantName={context.tenant.name}
+      tenantSlug={context.tenant.slug}
+      userEmail={user.email}
+      userName={user.fullName || user.displayName}
+      isAdmin={true}
+    >
+      <PageContainer
+        eyebrow="PANEL EMPRESARIAL · SAAS"
+        title="Dashboard General"
+        description="Monitoreo en tiempo real de operaciones, ventas e inventario de la organización."
+        breadcrumbs={[
+          { label: 'Organización', href: '/' },
+          { label: 'Dashboard' },
+        ]}
+        actions={
+          <div className="flex items-center gap-2.5">
+            <Button asChild variant="outline" size="sm">
+              <Link href="/pedidos-admin">
+                <ShoppingCart size={15} />
+                <span>Ver Pedidos</span>
+              </Link>
+            </Button>
+            <Button asChild size="sm">
+              <Link href="/stock">
+                <Boxes size={15} />
+                <span>Control Stock</span>
+              </Link>
+            </Button>
+          </div>
+        }
+      >
+        {/* 1. KPI Cards Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+          {/* KPI: Ingresos Totales */}
+          <Card className="p-5 hover:border-primary/40 transition-all duration-200">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-muted-foreground tracking-wide uppercase">
+                Ingresos Facturados
+              </span>
+              <div className="size-8 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                <DollarSign size={16} />
+              </div>
+            </div>
+            <div className="mt-3">
+              <div className="text-2xl font-bold tracking-tight text-foreground">
+                ${totalRevenue.toLocaleString('es-UY')}
+              </div>
+              <div className="flex items-center gap-1.5 mt-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                <TrendingUp size={13} />
+                <span>Actualizado al instante</span>
+              </div>
+            </div>
+          </Card>
 
-      <div className="admin-stats">
-        <div>
-          <span style={{ fontSize: '13px', color: 'var(--soft)' }}>Ingresos Totales</span>
-          <strong style={{ fontSize: '28px', color: 'var(--ink)', margin: '8px 0' }}>${totalRevenue.toLocaleString('es-UY')}</strong>
-          <div style={{ fontSize: '11px', color: 'var(--action)', fontWeight: 600 }}>Desde el inicio</div>
-        </div>
-        <div>
-          <span style={{ fontSize: '13px', color: 'var(--soft)' }}>Pedidos Pendientes</span>
-          <strong style={{ fontSize: '28px', color: 'var(--ink)', margin: '8px 0' }}>{pendingOrders}</strong>
-          <div style={{ fontSize: '11px', color: 'var(--soft)' }}>Requieren atención</div>
-        </div>
-        <div>
-          <span style={{ fontSize: '13px', color: 'var(--soft)' }}>Usuarios Registrados</span>
-          <strong style={{ fontSize: '28px', color: 'var(--ink)', margin: '8px 0' }}>{profiles?.count || 0}</strong>
-          <div style={{ fontSize: '11px', color: 'var(--soft)' }}>Clientes y empresas</div>
-        </div>
-        <div>
-          <span style={{ fontSize: '13px', color: 'var(--soft)' }}>Estado del Sistema</span>
-          <strong style={{ fontSize: '28px', color: '#10b981', margin: '8px 0' }}>En línea</strong>
-          <div style={{ fontSize: '11px', color: 'var(--soft)' }}>Base de datos D1 conectada</div>
-        </div>
-      </div>
+          {/* KPI: Pedidos Pendientes */}
+          <Card className="p-5 hover:border-primary/40 transition-all duration-200">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-muted-foreground tracking-wide uppercase">
+                Pedidos Pendientes
+              </span>
+              <div className="size-8 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+                <Clock size={16} />
+              </div>
+            </div>
+            <div className="mt-3">
+              <div className="text-2xl font-bold tracking-tight text-foreground">
+                {pendingOrders}
+              </div>
+              <div className="text-xs text-muted-foreground mt-1.5">
+                {pendingOrders > 0 ? 'Requieren revisión en mostrador' : 'Sin pedidos pendientes'}
+              </div>
+            </div>
+          </Card>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '20px', marginTop: '30px' }}>
-        
-        {/* Recientes */}
-        <div style={{ background: 'var(--surface)', border: '1px solid var(--edge)', borderRadius: '8px', padding: '24px' }}>
-          <h2 style={{ fontSize: '18px', margin: '0 0 20px' }}>Órdenes Recientes</h2>
-          <div className="table-scroll">
-            <table className="registry-table" style={{ width: '100%', fontSize: '13px' }}>
-              <thead>
-                <tr>
-                  <th style={{ background: 'transparent', padding: '10px 16px', borderBottom: '1px solid var(--edge)' }}>ID</th>
-                  <th style={{ background: 'transparent', padding: '10px 16px', borderBottom: '1px solid var(--edge)' }}>Monto</th>
-                  <th style={{ background: 'transparent', padding: '10px 16px', borderBottom: '1px solid var(--edge)' }}>Estado</th>
-                  <th style={{ background: 'transparent', padding: '10px 16px', borderBottom: '1px solid var(--edge)' }}>Fecha</th>
-                </tr>
-              </thead>
-              <tbody>
-                {orders.results.slice(0, 5).map(o => (
-                  <tr key={o.created_at}>
-                    <td style={{ padding: '12px 16px', borderTop: '1px solid var(--edge)' }}>Orden</td>
-                    <td style={{ padding: '12px 16px', borderTop: '1px solid var(--edge)' }}>${o.total.toLocaleString()}</td>
-                    <td style={{ padding: '12px 16px', borderTop: '1px solid var(--edge)' }}>
-                      <span className="account-status active" style={{ background: o.status === 'pending' ? '#f59e0b20' : '#10b98120', color: o.status === 'pending' ? '#d97706' : '#059669' }}>
-                        {o.status.toUpperCase()}
-                      </span>
-                    </td>
-                    <td style={{ padding: '12px 16px', borderTop: '1px solid var(--edge)' }}>{new Date(o.created_at).toLocaleDateString()}</td>
+          {/* KPI: Miembros del Tenant */}
+          <Card className="p-5 hover:border-primary/40 transition-all duration-200">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-muted-foreground tracking-wide uppercase">
+                Equipo / Usuarios
+              </span>
+              <div className="size-8 rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-400 flex items-center justify-center">
+                <Users size={16} />
+              </div>
+            </div>
+            <div className="mt-3">
+              <div className="text-2xl font-bold tracking-tight text-foreground">
+                {tenantUsers.length}
+              </div>
+              <div className="text-xs text-muted-foreground mt-1.5">
+                Membresías activas de la organización
+              </div>
+            </div>
+          </Card>
+
+          {/* KPI: Seguridad & Tenant Health */}
+          <Card className="p-5 hover:border-primary/40 transition-all duration-200">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-muted-foreground tracking-wide uppercase">
+                Aislamiento Multi-Tenant
+              </span>
+              <div className="size-8 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                <ShieldCheck size={16} />
+              </div>
+            </div>
+            <div className="mt-3">
+              <div className="text-2xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                <CheckCircle2 size={20} />
+                <span>Activo</span>
+              </div>
+              <div className="text-xs text-muted-foreground mt-1.5">
+                Scope estricto ({context.tenant.slug})
+              </div>
+            </div>
+          </Card>
+        </div>
+
+        {/* 2. Sección Principal: Tabla de Órdenes Recientes + Accesos Rápidos */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pt-2">
+          {/* Tabla de Órdenes Recientes */}
+          <Card className="lg:col-span-2 overflow-hidden">
+            <div className="p-5 sm:p-6 flex items-center justify-between border-b border-border/70">
+              <div>
+                <h2 className="text-base font-semibold text-foreground">
+                  Órdenes Recientes
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                  Últimos pedidos registrados en {context.tenant.name}
+                </p>
+              </div>
+
+              <Button asChild variant="ghost" size="sm" className="text-xs font-semibold text-primary">
+                <Link href="/pedidos-admin">
+                  <span>Ver todas</span>
+                  <ArrowUpRight size={14} className="ml-1" />
+                </Link>
+              </Button>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs sm:text-sm">
+                <thead>
+                  <tr className="border-b border-border/60 bg-muted/40 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                    <th className="py-3 px-4 sm:px-6">Identificador</th>
+                    <th className="py-3 px-4">Cliente</th>
+                    <th className="py-3 px-4">Monto Total</th>
+                    <th className="py-3 px-4">Estado</th>
+                    <th className="py-3 px-4 text-right">Fecha</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-border/60">
+                  {recentOrders.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-8 text-center text-muted-foreground">
+                        No hay pedidos registrados en este tenant todavía.
+                      </td>
+                    </tr>
+                  ) : (
+                    recentOrders.map((order) => {
+                      const isPending = order.status === 'pending';
+                      const isDelivered = order.status === 'delivered';
+                      const isCancelled = order.status === 'cancelled';
+
+                      return (
+                        <tr
+                          key={order.id}
+                          className="hover:bg-muted/30 transition-colors group"
+                        >
+                          <td className="py-3 px-4 sm:px-6 font-mono font-medium text-primary">
+                            <Link href={`/pedidos-admin`} className="hover:underline">
+                              {order.id.slice(0, 14)}
+                            </Link>
+                          </td>
+                          <td className="py-3 px-4">
+                            <div className="font-medium text-foreground truncate max-w-[140px] sm:max-w-[200px]">
+                              {order.userName || order.userEmail}
+                            </div>
+                            <div className="text-[11px] text-muted-foreground truncate">
+                              {order.shippingCity || 'Montevideo'}
+                            </div>
+                          </td>
+                          <td className="py-3 px-4 font-semibold text-foreground whitespace-nowrap">
+                            ${order.total.toLocaleString('es-UY')}
+                          </td>
+                          <td className="py-3 px-4">
+                            <Badge
+                              variant={
+                                isPending
+                                  ? 'secondary'
+                                  : isCancelled
+                                  ? 'destructive'
+                                  : isDelivered
+                                  ? 'default'
+                                  : 'outline'
+                              }
+                              className="text-[10px] font-semibold uppercase px-2 py-0.5"
+                            >
+                              {order.status}
+                            </Badge>
+                          </td>
+                          <td className="py-3 px-4 text-right text-xs text-muted-foreground whitespace-nowrap">
+                            {new Date(order.createdAt).toLocaleDateString('es-UY')}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+
+          {/* Accesos Rápidos & Módulos Dambru */}
+          <div className="space-y-4">
+            <Card className="p-5">
+              <h3 className="text-sm font-semibold text-foreground mb-3">
+                Módulos de Operación
+              </h3>
+              <div className="space-y-2.5">
+                <Link
+                  href="/stock"
+                  className="flex items-center justify-between p-3 rounded-lg border border-border bg-card hover:bg-secondary/60 hover:border-primary/40 transition-all text-xs"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className="size-7 rounded-md bg-sky-500/10 text-primary flex items-center justify-center">
+                      <Boxes size={15} />
+                    </div>
+                    <div>
+                      <div className="font-semibold text-foreground">Inventario & Stock</div>
+                      <div className="text-muted-foreground text-[11px]">Entradas, salidas y ajustes</div>
+                    </div>
+                  </div>
+                  <ArrowUpRight size={15} className="text-muted-foreground" />
+                </Link>
+
+                <Link
+                  href="/pedidos-admin"
+                  className="flex items-center justify-between p-3 rounded-lg border border-border bg-card hover:bg-secondary/60 hover:border-primary/40 transition-all text-xs"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className="size-7 rounded-md bg-amber-500/10 text-amber-600 flex items-center justify-center">
+                      <ShoppingCart size={15} />
+                    </div>
+                    <div>
+                      <div className="font-semibold text-foreground">Gestión de Pedidos</div>
+                      <div className="text-muted-foreground text-[11px]">Aprobaciones y facturación</div>
+                    </div>
+                  </div>
+                  <ArrowUpRight size={15} className="text-muted-foreground" />
+                </Link>
+
+                <Link
+                  href="/clientes"
+                  className="flex items-center justify-between p-3 rounded-lg border border-border bg-card hover:bg-secondary/60 hover:border-primary/40 transition-all text-xs"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className="size-7 rounded-md bg-indigo-500/10 text-indigo-600 flex items-center justify-center">
+                      <Users size={15} />
+                    </div>
+                    <div>
+                      <div className="font-semibold text-foreground">Clientes & CRM</div>
+                      <div className="text-muted-foreground text-[11px]">Directorio de cuentas</div>
+                    </div>
+                  </div>
+                  <ArrowUpRight size={15} className="text-muted-foreground" />
+                </Link>
+
+                <Link
+                  href="/administracion"
+                  className="flex items-center justify-between p-3 rounded-lg border border-border bg-card hover:bg-secondary/60 hover:border-primary/40 transition-all text-xs"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className="size-7 rounded-md bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
+                      <ShieldCheck size={15} />
+                    </div>
+                    <div>
+                      <div className="font-semibold text-foreground">Usuarios & Roles</div>
+                      <div className="text-muted-foreground text-[11px]">Membresías del tenant</div>
+                    </div>
+                  </div>
+                  <ArrowUpRight size={15} className="text-muted-foreground" />
+                </Link>
+              </div>
+            </Card>
+
+            <Card className="p-5 bg-gradient-to-br from-primary/5 via-card to-card border-primary/20">
+              <div className="flex items-center gap-2 text-primary font-bold text-xs uppercase tracking-wider mb-1.5">
+                <ShieldCheck size={16} />
+                <span>Dambru Solutions SaaS</span>
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Organización <strong>{context.tenant.name}</strong> operando bajo aislamiento formal RBAC y base de datos Cloudflare D1.
+              </p>
+            </Card>
           </div>
         </div>
-
-        {/* Accesos Rápidos */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <a href="/cuenta" style={{ background: 'var(--surface)', border: '1px solid var(--edge)', padding: '20px', borderRadius: '8px', display: 'block', color: 'var(--ink)' }}>
-            <h3 style={{ fontSize: '15px', margin: '0 0 5px' }}>Clientes y Usuarios</h3>
-            <p style={{ margin: 0, fontSize: '12px', color: 'var(--soft)' }}>Gestiona los accesos y registros.</p>
-          </a>
-          <a href="/pedidos-admin" style={{ background: 'var(--surface)', border: '1px solid var(--edge)', padding: '20px', borderRadius: '8px', display: 'block', color: 'var(--ink)' }}>
-            <h3 style={{ fontSize: '15px', margin: '0 0 5px' }}>Órdenes</h3>
-            <p style={{ margin: 0, fontSize: '12px', color: 'var(--soft)' }}>Cambiar estados y ver detalles.</p>
-          </a>
-          <a href="/admin/products" style={{ background: 'var(--surface)', border: '1px solid var(--edge)', padding: '20px', borderRadius: '8px', display: 'block', color: 'var(--ink)' }}>
-            <h3 style={{ fontSize: '15px', margin: '0 0 5px', color: 'var(--action)' }}>Administración de mercadería</h3>
-            <p style={{ margin: 0, fontSize: '12px', color: 'var(--soft)' }}>Agregar productos, fotos, precios e impuestos.</p>
-          </a>
-          <a href="/stock" style={{ background: 'var(--surface)', border: '1px solid var(--edge)', padding: '20px', borderRadius: '8px', display: 'block', color: 'var(--ink)' }}>
-            <h3 style={{ fontSize: '15px', margin: '0 0 5px' }}>Movimientos de Stock</h3>
-            <p style={{ margin: 0, fontSize: '12px', color: 'var(--soft)' }}>Registrar entradas, salidas y conteos del depósito.</p>
-          </a>
-        </div>
-
-      </div>
-    </main>
+      </PageContainer>
+    </AppShell>
   );
 }

@@ -1,21 +1,169 @@
-import {getChatGPTUser} from '../../../chatgpt-auth';
-import {profileDb} from '../../../../db/profiles';
-import {isCompanyAdmin,isAdminEmail,ensureAccount,RegisteredAccount} from '../../../../lib/accounts';
-export const dynamic='force-dynamic';
-const json=(body:unknown,status=200)=>Response.json(body,{status,headers:{'Cache-Control':'no-store'}});
-export async function GET(){const user=await getChatGPTUser();if(!user)return json({error:'Iniciá sesión.'},401);if(!isCompanyAdmin(user))return json({error:'Acceso reservado al administrador.'},403);try{await ensureAccount(user);const db=profileDb();const result=await db.prepare("SELECT a.user_id AS userId,a.email,a.status,COALESCE(p.display_name,a.email) AS displayName,COALESCE(p.company,'') AS company,COALESCE(p.phone,'') AS phone,a.created_at AS createdAt,a.last_seen_at AS lastSeenAt,a.updated_at AS updatedAt, COALESCE((SELECT SUM(total) FROM orders WHERE user_id = a.user_id AND status != 'cancelled'), 0) AS totalSpent, COALESCE((SELECT COUNT(1) FROM orders WHERE user_id = a.user_id AND status != 'cancelled'), 0) AS ordersCount, (SELECT MAX(created_at) FROM orders WHERE user_id = a.user_id) AS lastOrderAt FROM accounts a LEFT JOIN profiles p ON p.user_id=a.user_id UNION ALL SELECT p.user_id AS userId,p.email,'active' AS status,p.display_name AS displayName,p.company,COALESCE(p.phone,'') AS phone,p.updated_at AS createdAt,p.updated_at AS lastSeenAt,p.updated_at AS updatedAt, COALESCE((SELECT SUM(total) FROM orders WHERE user_id = p.user_id AND status != 'cancelled'), 0) AS totalSpent, COALESCE((SELECT COUNT(1) FROM orders WHERE user_id = p.user_id AND status != 'cancelled'), 0) AS ordersCount, (SELECT MAX(created_at) FROM orders WHERE user_id = p.user_id) AS lastOrderAt FROM profiles p WHERE NOT EXISTS (SELECT 1 FROM accounts a WHERE a.user_id=p.user_id) ORDER BY createdAt DESC").all<RegisteredAccount & {totalSpent: number; phone?: string; ordersCount?: number; lastOrderAt?: string}>();const events=await db.prepare('SELECT id,target_email AS targetEmail,action,created_at AS createdAt FROM account_events ORDER BY id DESC LIMIT 30').all();return json({accounts:result.results.map(a=>({...a,isAdmin:isAdminEmail(a.email)})),events:events.results,currentUserId:user.userId})}catch(e){console.error('Account registry read failed',e);return json({error:'No pudimos cargar el registro de cuentas.'},503)}}
-export async function POST(request:Request){
- let raw='';const reader=request.body?.getReader();if(reader){const decoder=new TextDecoder();let size=0;try{while(true){const part=await reader.read();if(part.done)break;size+=part.value.byteLength;if(size>2000){await reader.cancel();return json({error:'Solicitud demasiado grande.'},413)}raw+=decoder.decode(part.value,{stream:true})}raw+=decoder.decode()}finally{reader.releaseLock()}}
- const user=await getChatGPTUser();if(!user)return json({error:'Iniciá sesión.'},401);if(!isCompanyAdmin(user))return json({error:'Acceso reservado al administrador.'},403);
- const origin=request.headers.get('origin');if(!origin||![new URL(request.url).origin,'https://barraca-uno-inventario.brunosaravia9.chatgpt.site'].includes(origin)||request.headers.get('sec-fetch-site')==='cross-site')return json({error:'Origen no permitido.'},403);
- if(!request.headers.get('content-type')?.includes('application/json'))return json({error:'Formato no permitido.'},415);
- let input:{userId?:unknown;action?:unknown;confirmation?:unknown};try{input=JSON.parse(raw)}catch{return json({error:'Solicitud inválida.'},400)}
- if(!input||typeof input.userId!=='string'||!input.userId||input.userId.length>200||!['block','activate','delete'].includes(String(input.action)))return json({error:'Revisá la cuenta y la acción.'},400);
- try{const db=profileDb();const target=await db.prepare("SELECT user_id AS userId,email,status,created_at AS createdAt FROM accounts WHERE user_id=? UNION ALL SELECT user_id AS userId,email,'active' AS status,updated_at AS createdAt FROM profiles WHERE user_id=? AND NOT EXISTS(SELECT 1 FROM accounts WHERE user_id=?) LIMIT 1").bind(input.userId,input.userId,input.userId).first<RegisteredAccount>();if(!target)return json({error:'La cuenta no existe.'},404);if(target.userId===user.userId||isAdminEmail(target.email))return json({error:'Las cuentas administradoras están protegidas.'},409);
- const action=String(input.action);if(action==='delete'&&input.confirmation!==target.email)return json({error:'Escribí el correo exacto para confirmar la eliminación.'},400);
- const nextStatus=action==='block'?'blocked':action==='delete'?'deleted':'active';if(target.status===nextStatus)return json({ok:true,unchanged:true});if(target.status==='deleted'&&action==='block')return json({error:'La cuenta ya está eliminada.'},409);
- const now=new Date().toISOString();const statements=[db.prepare('INSERT INTO accounts (user_id,email,status,created_at,last_seen_at,updated_at) VALUES (?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET status=excluded.status,updated_at=excluded.updated_at').bind(target.userId,target.email,nextStatus,target.createdAt,now,now)];
- if(action==='delete')statements.push(db.prepare('DELETE FROM profiles WHERE user_id=?').bind(target.userId));
- statements.push(db.prepare('INSERT INTO account_events (actor_id,target_id,target_email,action,created_at) VALUES (?,?,?,?,?)').bind(user.userId,target.userId,target.email,action,now));await db.batch(statements);return json({ok:true,status:nextStatus});
- }catch(e){console.error('Account management failed',e);return json({error:'No pudimos aplicar el cambio. Reintentá.'},503)}
+import {
+  requireApiPermission,
+  notFoundResponse,
+  forbiddenResponse,
+} from '../../../../lib/api-auth';
+import { tenantUsersRepository, ordersRepository } from '../../../../lib/data';
+import { profileDb } from '../../../../db/profiles';
+import { ALL_TENANT_ROLES, type TenantRole } from '../../../../lib/permissions';
+
+export const dynamic = 'force-dynamic';
+
+const json = (body: unknown, status = 200) =>
+  Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } });
+
+export async function GET(req: Request) {
+  const auth = await requireApiPermission(req, 'users:read');
+  if (!auth.authorized || !auth.context || !auth.user) {
+    return auth.response!;
+  }
+
+  try {
+    const db = profileDb();
+
+    // 1. Obtener los miembros asignados estrictamente a este tenant
+    const tenantMembers = await tenantUsersRepository.getTenantUsers(auth.context);
+
+    // 2. Obtener los pedidos de este tenant para calcular gasto de cada usuario en el tenant
+    const tenantOrders = await ordersRepository.getOrders(auth.context, 1000);
+
+    const userStats = new Map<string, { totalSpent: number; ordersCount: number; lastOrderAt?: string }>();
+    for (const ord of tenantOrders) {
+      const current = userStats.get(ord.userId) ?? { totalSpent: 0, ordersCount: 0 };
+      if (ord.status !== 'cancelled') {
+        current.totalSpent += ord.total;
+        current.ordersCount += 1;
+      }
+      if (!current.lastOrderAt || ord.createdAt > current.lastOrderAt) {
+        current.lastOrderAt = ord.createdAt;
+      }
+      userStats.set(ord.userId, current);
+    }
+
+    const accountsResult = [];
+    for (const member of tenantMembers) {
+      const profile = await db
+        .prepare('SELECT email, display_name, company, phone FROM profiles WHERE user_id = ?')
+        .bind(member.userId)
+        .first<{ email: string; display_name: string; company: string; phone: string }>();
+
+      const stats = userStats.get(member.userId) ?? { totalSpent: 0, ordersCount: 0 };
+
+      accountsResult.push({
+        userId: member.userId,
+        email: profile?.email || '',
+        displayName: profile?.display_name || profile?.email || member.userId,
+        company: profile?.company || '',
+        phone: profile?.phone || '',
+        status: member.status,
+        role: member.role,
+        createdAt: member.createdAt,
+        updatedAt: member.updatedAt,
+        totalSpent: stats.totalSpent,
+        ordersCount: stats.ordersCount,
+        lastOrderAt: stats.lastOrderAt,
+        isAdmin: member.role === 'owner' || member.role === 'admin',
+      });
+    }
+
+    return json({
+      accounts: accountsResult,
+      events: [],
+      currentUserId: auth.user.userId,
+    });
+  } catch (e) {
+    console.error('Account registry read failed', e);
+    return json({ error: 'No pudimos cargar el registro de cuentas.' }, 503);
+  }
+}
+
+export async function POST(request: Request) {
+  const auth = await requireApiPermission(request, 'users:manage');
+  if (!auth.authorized || !auth.context || !auth.user) {
+    return auth.response!;
+  }
+
+  let input: { userId?: unknown; action?: unknown; role?: unknown; confirmation?: unknown };
+  try {
+    input = (await request.json()) as typeof input;
+  } catch {
+    return json({ error: 'Solicitud inválida.' }, 400);
+  }
+
+  if (
+    !input ||
+    typeof input.userId !== 'string' ||
+    !input.userId ||
+    !['block', 'activate', 'delete', 'change_role', 'set_role', 'add'].includes(String(input.action))
+  ) {
+    return json({ error: 'Revisá la cuenta y la acción solicitada.' }, 400);
+  }
+
+  const targetUserId = input.userId.trim();
+  const action = String(input.action);
+
+  // 1. Protección contra inyección de Platform Role
+  if (input.role === 'platform_owner') {
+    return json({ error: 'Rol de plataforma no permitido en organizaciones.' }, 400);
+  }
+
+  // 2. Validación explícita de rol si la acción modifica o asigna roles
+  if (['change_role', 'set_role', 'add'].includes(action)) {
+    const requestedRole = String(input.role || '');
+    if (!(ALL_TENANT_ROLES as readonly string[]).includes(requestedRole)) {
+      return json({ error: 'Rol de organización inválido.' }, 400);
+    }
+
+    // Regla de Protección de Owner: admin ≠ ownership transfer
+    const callerRole = auth.context.effectiveRole;
+    if (requestedRole === 'owner' && callerRole !== 'owner') {
+      return forbiddenResponse('Solo el propietario puede gestionar la titularidad.');
+    }
+  }
+
+  try {
+    // Caso: Agregar nuevo miembro al tenant
+    if (action === 'add') {
+      const roleToAdd = String(input.role || 'employee') as TenantRole;
+      await tenantUsersRepository.addTenantUser(auth.context, targetUserId, roleToAdd);
+      return json({ ok: true, status: 'active', role: roleToAdd });
+    }
+
+    // Para mutaciones sobre miembros existentes: verificar pertenencia estricta
+    const targetMember = await tenantUsersRepository.getTenantUser(auth.context, targetUserId);
+    if (!targetMember) {
+      return notFoundResponse('El usuario no pertenece a esta organización.');
+    }
+
+    // Protección contra auto-bloqueo o auto-eliminación
+    if (targetMember.userId === auth.user.userId) {
+      return forbiddenResponse('No podés modificar tu propia cuenta.');
+    }
+
+    // Protección absoluta de la cuenta de Owner
+    if (targetMember.role === 'owner') {
+      return forbiddenResponse('La cuenta del propietario está protegida.');
+    }
+
+    // Caso: Modificar rol de miembro
+    if (action === 'change_role' || action === 'set_role') {
+      const newRole = String(input.role) as TenantRole;
+      await tenantUsersRepository.updateTenantUserRole(auth.context, targetUserId, newRole);
+      return json({ ok: true, role: newRole });
+    }
+
+    // Caso: Eliminar membresía
+    if (action === 'delete') {
+      await tenantUsersRepository.removeTenantUser(auth.context, targetUserId);
+      return json({ ok: true, status: 'deleted' });
+    }
+
+    // Caso: Bloquear o activar miembro
+    const nextStatus = action === 'block' ? 'blocked' : 'active';
+    await tenantUsersRepository.updateTenantUserStatus(auth.context, targetUserId, nextStatus);
+    return json({ ok: true, status: nextStatus });
+  } catch (e) {
+    console.error('Account management failed', e);
+    return json({ error: 'No pudimos aplicar el cambio.' }, 503);
+  }
 }
