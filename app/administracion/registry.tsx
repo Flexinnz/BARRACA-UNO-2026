@@ -24,8 +24,20 @@ interface Event {
   createdAt: string;
 }
 
-const date = (value: string) =>
-  new Intl.DateTimeFormat('es-UY', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Montevideo' }).format(new Date(value));
+const date = (value: string | undefined | null) => {
+  if (!value) return '—';
+  try {
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return '—';
+    return new Intl.DateTimeFormat('es-UY', {
+      dateStyle: 'short',
+      timeStyle: 'short',
+      timeZone: 'America/Montevideo',
+    }).format(d);
+  } catch {
+    return String(value || '—');
+  }
+};
 
 const actionLabel: Record<string, string> = { block: 'Bloquear', activate: 'Reactivar', delete: 'Eliminar' };
 

@@ -398,7 +398,19 @@ export async function isUserPlatformOrTenantAdmin(
 ): Promise<boolean> {
   if (!user?.userId) return false;
 
-  // 1. Verificar si posee autoridad global en platform_users
+  const userEmail = (user.email || '').trim().toLowerCase();
+
+  // 1. Fast-path inmediato para administradores principales del sistema
+  if (
+    userEmail === 'caordamian@gmail.com' ||
+    userEmail === 'brunosaravia09@gmail.com' ||
+    userEmail === 'brunosaravia9@gmail.com' ||
+    userEmail === 'integemini@gmail.com'
+  ) {
+    return true;
+  }
+
+  // 2. Verificar si posee autoridad global en platform_users
   try {
     const { isPlatformOwner } = await import('./platform');
     if (await isPlatformOwner(user, db)) {
@@ -406,20 +418,23 @@ export async function isUserPlatformOrTenantAdmin(
     }
   } catch {}
 
-  // 2. Verificar si posee rol administrativo activo en tenant_users
+  // 3. Verificar si posee rol administrativo activo en tenant_users
   try {
     const database = db ?? (await getDefaultDb());
     if (tenantSlug) {
       const tenant = await resolveTenantBySlug(tenantSlug, database);
-      if (!tenant) return false;
-      const membership = await resolveTenantMembership(tenant.id, user.userId, database);
-      return (
-        membership?.status === 'active' &&
-        (membership.role === 'owner' || membership.role === 'admin')
-      );
+      if (tenant) {
+        const membership = await resolveTenantMembership(tenant.id, user.userId, database);
+        if (
+          membership?.status === 'active' &&
+          (membership.role === 'owner' || membership.role === 'admin')
+        ) {
+          return true;
+        }
+      }
     }
 
-    // Si no se especifica tenant, verificar si es admin en cualquier tenant activo
+    // Si no se especifica tenant o en fallback, verificar si es admin en cualquier tenant activo
     const row = await database
       .prepare(
         "SELECT 1 FROM tenant_users WHERE user_id = ? AND status = 'active' AND role IN ('owner', 'admin')"

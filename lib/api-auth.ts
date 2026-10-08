@@ -15,6 +15,7 @@
 import type { ChatGPTUser } from '../app/chatgpt-auth';
 import {
   resolveTenantContext,
+  resolveTenantBySlug,
   getLegacyTenantSlug,
   extractTenantSlugFromRequest,
   type TenantContext,
@@ -115,12 +116,48 @@ export async function requireApiPermission(
     allowAnonymousStorefront?: boolean;
   }
 ): Promise<ApiAuthResult> {
+  // FAST PATH: Si se permite lectura pública de storefront (catálogo público de productos)
+  if (options?.allowAnonymousStorefront) {
+    const slug = req ? extractTenantSlugFromRequest(req) : getLegacyTenantSlug();
+    const tenant = await resolveTenantBySlug(slug, options?.db);
+    if (!tenant) {
+      return {
+        authorized: false,
+        context: null,
+        user: null,
+        response: notFoundResponse('Organización no encontrada.'),
+      };
+    }
+    const context: TenantContext = {
+      tenant,
+      user: null,
+      accessSource: 'anonymous_storefront',
+      membership: null,
+      effectiveRole: null,
+      permissions: new Set<TenantPermission>(['products:read', 'stock:read']),
+      isLegacyTenant: tenant.slug === getLegacyTenantSlug(),
+    };
+    return {
+      authorized: true,
+      context,
+      user: null,
+    };
+  }
+
   const user =
     options?.userOverride !== undefined ? options.userOverride : await resolveSessionUser();
 
+  // Comprobar autenticación
+  if (!user) {
+    return {
+      authorized: false,
+      context: null,
+      user: null,
+      response: unauthorizedResponse(),
+    };
+  }
+
   // 1. Verificación contra spoofing de soporte:
-  // Si el cliente solicita explícitamente platform_support vía header,
-  // validar server-side que sea un Platform Owner activo en platform_users.
   const isSupportRequested =
     req?.headers.get('x-platform-support')?.trim() === 'true' ||
     req?.headers.get('x-platform-support')?.trim() === '1';
@@ -149,24 +186,17 @@ export async function requireApiPermission(
     };
   }
 
-  // Si se permite lectura pública de storefront y no hay usuario
-  if (options?.allowAnonymousStorefront && !user) {
-    return {
-      authorized: true,
-      context,
-      user: null,
-    };
-  }
-
-  // Comprobar autenticación
-  if (!user) {
-    return {
-      authorized: false,
-      context,
-      user: null,
-      response: unauthorizedResponse(),
-    };
-  }
+  // 2. Autoridad directa para Platform Owners (acceso administrativo global)
+  try {
+    const { isPlatformOwner } = await import('./platform');
+    if (await isPlatformOwner(user, options?.db)) {
+      return {
+        authorized: true,
+        context,
+        user,
+      };
+    }
+  } catch {}
 
   // 2. Comprobar autorización de Platform Support
   if (context.accessSource === 'platform_support') {

@@ -26,19 +26,22 @@ interface ClientAccount {
 }
 
 const money = (v: number) => new Intl.NumberFormat('es-UY', { style: 'currency', currency: 'UYU', maximumFractionDigits: 0 }).format(v);
-const fmtDate = (v: string) => {
+const fmtDate = (v: string | undefined | null) => {
   if (!v) return '—';
   try {
-    return new Intl.DateTimeFormat('es-UY', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Montevideo' }).format(new Date(v));
+    const d = new Date(v);
+    if (isNaN(d.getTime())) return '—';
+    return new Intl.DateTimeFormat('es-UY', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Montevideo' }).format(d);
   } catch {
-    return v;
+    return String(v || '—');
   }
 };
 
-function isConnectedToday(dateStr: string): boolean {
+function isConnectedToday(dateStr: string | undefined | null): boolean {
   if (!dateStr) return false;
   try {
     const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return false;
     const now = new Date();
     const diffHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
     return diffHours < 24 && date.getDate() === now.getDate();
