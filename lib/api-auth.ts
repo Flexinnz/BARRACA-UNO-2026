@@ -147,17 +147,9 @@ export async function requireApiPermission(
   const user =
     options?.userOverride !== undefined ? options.userOverride : await resolveSessionUser();
 
-  // Comprobar autenticación
-  if (!user) {
-    return {
-      authorized: false,
-      context: null,
-      user: null,
-      response: unauthorizedResponse(),
-    };
-  }
-
   // 1. Verificación contra spoofing de soporte:
+  // Si el cliente solicita explícitamente platform_support vía header,
+  // validar server-side que sea un Platform Owner activo en platform_users.
   const isSupportRequested =
     req?.headers.get('x-platform-support')?.trim() === 'true' ||
     req?.headers.get('x-platform-support')?.trim() === '1';
@@ -186,17 +178,15 @@ export async function requireApiPermission(
     };
   }
 
-  // 2. Autoridad directa para Platform Owners (acceso administrativo global)
-  try {
-    const { isPlatformOwner } = await import('./platform');
-    if (await isPlatformOwner(user, options?.db)) {
-      return {
-        authorized: true,
-        context,
-        user,
-      };
-    }
-  } catch {}
+  // Comprobar autenticación
+  if (!user) {
+    return {
+      authorized: false,
+      context,
+      user: null,
+      response: unauthorizedResponse(),
+    };
+  }
 
   // 2. Comprobar autorización de Platform Support
   if (context.accessSource === 'platform_support') {

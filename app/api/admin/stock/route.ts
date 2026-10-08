@@ -46,10 +46,28 @@ export async function GET(request: Request) {
   }
 
   try {
-    const [products, movements] = await Promise.all([
+    const [products, movementsRaw] = await Promise.all([
       getProductsWithStock(auth.context),
       stockRepository.getStockMovements(auth.context, 100),
     ]);
+
+    const movements = (movementsRaw || []).map((m: any) => ({
+      id: m.id,
+      productId: m.productId ?? m.product_id,
+      type: m.type,
+      amount: m.amount,
+      delta: m.delta,
+      before: m.beforeQuantity ?? m.before ?? 0,
+      beforeQuantity: m.beforeQuantity ?? m.before ?? 0,
+      after: m.afterQuantity ?? m.after ?? 0,
+      afterQuantity: m.afterQuantity ?? m.after ?? 0,
+      reason: m.reason || '',
+      reference: m.reference || '',
+      actorId: m.actorId ?? m.actor_id ?? '',
+      actorEmail: m.actorEmail ?? m.actor_email ?? '',
+      actorName: m.actorName ?? (m.actorEmail ? m.actorEmail.split('@')[0] : 'Operador'),
+      createdAt: m.createdAt ?? m.created_at ?? '',
+    }));
 
     return json({ products, movements });
   } catch (e) {
@@ -146,8 +164,30 @@ export async function POST(request: Request) {
       actorEmail: auth.user.email,
     });
 
-    const products = await getProductsWithStock(auth.context);
-    return json({ ok: true, products });
+    const [products, movementsRaw] = await Promise.all([
+      getProductsWithStock(auth.context),
+      stockRepository.getStockMovements(auth.context, 100),
+    ]);
+
+    const movements = (movementsRaw || []).map((m: any) => ({
+      id: m.id,
+      productId: m.productId ?? m.product_id,
+      type: m.type,
+      amount: m.amount,
+      delta: m.delta,
+      before: m.beforeQuantity ?? m.before ?? 0,
+      beforeQuantity: m.beforeQuantity ?? m.before ?? 0,
+      after: m.afterQuantity ?? m.after ?? 0,
+      afterQuantity: m.afterQuantity ?? m.after ?? 0,
+      reason: m.reason || '',
+      reference: m.reference || '',
+      actorId: m.actorId ?? m.actor_id ?? '',
+      actorEmail: m.actorEmail ?? m.actor_email ?? '',
+      actorName: m.actorName ?? (m.actorEmail ? m.actorEmail.split('@')[0] : 'Operador'),
+      createdAt: m.createdAt ?? m.created_at ?? '',
+    }));
+
+    return json({ ok: true, products, movements });
   } catch (e) {
     console.error('Stock movement failed', e);
     return json({ error: 'No pudimos guardar el movimiento.' }, 503);
