@@ -12,6 +12,7 @@ import {
 } from '../../../lib/data';
 import { sendOrderConfirmationEmail } from '../../../lib/email';
 import { profileDb } from '../../../db/profiles';
+import { isUserPlatformOrTenantAdmin } from '../../../lib/tenant-context';
 
 export const dynamic = 'force-dynamic';
 
@@ -181,41 +182,158 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url);
   const singleId = url.searchParams.get('orderId');
+  const db = profileDb();
+  const tenantId = context.tenant.id;
 
   // Consulta de un pedido específico por ID
   if (singleId) {
-    const orderWithItems = await ordersRepository.getOrderById(context, singleId);
-    if (!orderWithItems) {
+    const order = await db
+      .prepare(
+        'SELECT * FROM orders WHERE id = ? AND (tenant_id = ? OR tenant_id IS NULL)'
+      )
+      .bind(singleId.trim(), tenantId)
+      .first<any>();
+
+    if (!order) {
       return notFoundResponse('Pedido no encontrado en esta organización.');
     }
 
-    // Si no tiene permiso de gestión de pedidos en el tenant y el pedido no es suyo
-    const canManageOrders = context.permissions.has('orders:manage');
-    if (!canManageOrders && orderWithItems.userId !== context.user.userId) {
+    const isAdmin = await isUserPlatformOrTenantAdmin(context.user, context.tenant.slug);
+    const canManageOrders =
+      isAdmin ||
+      context.permissions.has('orders:manage') ||
+      context.permissions.has('orders:read');
+
+    if (!canManageOrders && order.user_id !== context.user.userId) {
       return forbiddenResponse('Sin acceso a este pedido.');
     }
 
-    const { items, ...orderData } = orderWithItems;
+    const itemsRes = await db
+      .prepare('SELECT * FROM order_items WHERE order_id = ?')
+      .bind(order.id)
+      .all<any>();
+
+    const items = (itemsRes.results || []).map((i) => ({
+      ...i,
+      id: i.id,
+      order_id: i.order_id,
+      orderId: i.order_id,
+      product_id: i.product_id,
+      productId: i.product_id,
+      product_name: i.product_name,
+      productName: i.product_name,
+      product_sku: i.product_sku,
+      productSku: i.product_sku,
+      product_unit: i.product_unit,
+      productUnit: i.product_unit,
+      quantity: i.quantity,
+      unit_price: i.unit_price,
+      unitPrice: i.unit_price,
+      line_total: i.line_total,
+      lineTotal: i.line_total,
+    }));
+
     return Response.json(
-      { order: orderData, items },
+      { order, items },
       { headers: { 'Cache-Control': 'no-store' } }
     );
   }
 
   const isAll = url.searchParams.get('all') === '1';
-  const canReadOrders = context.permissions.has('orders:read') || context.permissions.has('orders:manage');
+  const isAdmin = await isUserPlatformOrTenantAdmin(context.user, context.tenant.slug);
+  const canReadOrders =
+    isAdmin ||
+    context.permissions.has('orders:read') ||
+    context.permissions.has('orders:manage');
 
   if (isAll) {
     if (!canReadOrders) {
       return forbiddenResponse('Solo personal autorizado puede listar todos los pedidos.');
     }
-    const allOrders = await ordersRepository.getOrders(context, 200);
-    return Response.json({ orders: allOrders }, { headers: { 'Cache-Control': 'no-store' } });
+
+    const query = `
+      SELECT o.*, GROUP_CONCAT(oi.product_name || ' x' || oi.quantity, '|') AS items_summary
+      FROM orders o
+      LEFT JOIN order_items oi ON oi.order_id = o.id
+      WHERE (o.tenant_id = ? OR o.tenant_id IS NULL)
+      GROUP BY o.id
+      ORDER BY o.created_at DESC
+      LIMIT 200
+    `;
+    const res = await db.prepare(query).bind(tenantId).all<any>();
+    const orders = (res.results || []).map((row) => ({
+      ...row,
+      id: row.id,
+      user_id: row.user_id,
+      userId: row.user_id,
+      user_email: row.user_email,
+      userEmail: row.user_email,
+      user_name: row.user_name,
+      userName: row.user_name,
+      status: row.status,
+      payment_method: row.payment_method,
+      paymentMethod: row.payment_method,
+      shipping_address: row.shipping_address,
+      shippingAddress: row.shipping_address,
+      shipping_city: row.shipping_city,
+      shippingCity: row.shipping_city,
+      shipping_phone: row.shipping_phone,
+      shippingPhone: row.shipping_phone,
+      notes: row.notes,
+      subtotal: row.subtotal,
+      tax: row.tax,
+      total: row.total,
+      created_at: row.created_at,
+      createdAt: row.created_at,
+      updated_at: row.updated_at,
+      updatedAt: row.updated_at,
+      items_summary: row.items_summary || '',
+      itemsSummary: row.items_summary || '',
+    }));
+
+    return Response.json({ orders }, { headers: { 'Cache-Control': 'no-store' } });
   }
 
-  // Listado de pedidos propios del usuario dentro del tenant
-  const allOrders = await ordersRepository.getOrders(context, 200);
-  const userOrders = allOrders.filter((o) => o.userId === context.user!.userId);
+  // Pedidos del usuario actual dentro de este tenant
+  const userQuery = `
+    SELECT o.*, GROUP_CONCAT(oi.product_name || ' x' || oi.quantity, '|') AS items_summary
+    FROM orders o
+    LEFT JOIN order_items oi ON oi.order_id = o.id
+    WHERE (o.tenant_id = ? OR o.tenant_id IS NULL) AND o.user_id = ?
+    GROUP BY o.id
+    ORDER BY o.created_at DESC
+    LIMIT 100
+  `;
+  const res = await db.prepare(userQuery).bind(tenantId, context.user.userId).all<any>();
+  const userOrders = (res.results || []).map((row) => ({
+    ...row,
+    id: row.id,
+    user_id: row.user_id,
+    userId: row.user_id,
+    user_email: row.user_email,
+    userEmail: row.user_email,
+    user_name: row.user_name,
+    userName: row.user_name,
+    status: row.status,
+    payment_method: row.payment_method,
+    paymentMethod: row.payment_method,
+    shipping_address: row.shipping_address,
+    shippingAddress: row.shipping_address,
+    shipping_city: row.shipping_city,
+    shippingCity: row.shipping_city,
+    shipping_phone: row.shipping_phone,
+    shippingPhone: row.shipping_phone,
+    notes: row.notes,
+    subtotal: row.subtotal,
+    tax: row.tax,
+    total: row.total,
+    created_at: row.created_at,
+    createdAt: row.created_at,
+    updated_at: row.updated_at,
+    updatedAt: row.updated_at,
+    items_summary: row.items_summary || '',
+    itemsSummary: row.items_summary || '',
+  }));
 
   return Response.json({ orders: userOrders }, { headers: { 'Cache-Control': 'no-store' } });
 }

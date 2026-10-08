@@ -12,8 +12,27 @@ interface Order{
 }
 interface OrderItem{id:number;order_id:string;product_id:number;product_name:string;product_sku:string;product_unit:string;quantity:number;unit_price:number;line_total:number}
 
-const money=(v:number)=>new Intl.NumberFormat('es-UY',{style:'currency',currency:'UYU',maximumFractionDigits:0}).format(v);
-const date=(v:string)=>new Intl.DateTimeFormat('es-UY',{dateStyle:'short',timeStyle:'short',timeZone:'America/Montevideo'}).format(new Date(v));
+const money = (v: number | undefined | null) =>
+  new Intl.NumberFormat('es-UY', {
+    style: 'currency',
+    currency: 'UYU',
+    maximumFractionDigits: 0,
+  }).format(v || 0);
+
+const date = (v: string | undefined | null) => {
+  if (!v) return '—';
+  try {
+    const d = new Date(v);
+    if (isNaN(d.getTime())) return '—';
+    return new Intl.DateTimeFormat('es-UY', {
+      dateStyle: 'short',
+      timeStyle: 'short',
+      timeZone: 'America/Montevideo',
+    }).format(d);
+  } catch {
+    return String(v || '—');
+  }
+};
 
 const STATUS_CONFIG:{[k:string]:{label:string;color:string;icon:typeof Clock}}={
   pending:{label:'Pendiente',color:'amber',icon:Clock},
@@ -184,7 +203,7 @@ export function OrdersRegistry(){
                     </div>
                     <div className="order-items-preview">
                       <h4><Package size={14}/>Productos pedidos</h4>
-                      <p className="order-items-list">{o.items_summary?.split('|').join(' · ')}</p>
+                      <p className="order-items-list">{o.items_summary ? o.items_summary.split('|').join(' · ') : 'Sin detalle'}</p>
                     </div>
                     <div className="order-card-footer">
                       <div className="order-totals-mini">
