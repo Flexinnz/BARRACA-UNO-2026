@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "@/components/arc/foundation.css";
 
 export const metadata: Metadata = {
   title: "Barraca Uno | Inventario y compras",
