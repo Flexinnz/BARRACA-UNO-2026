@@ -457,7 +457,7 @@ export function DashboardSection() {
               <Link href="/stock" className={styles.actionButton}>
                 <span className={styles.actionIconGroup}>
                   <Boxes size={16} strokeWidth={1.75} style={{ color: 'var(--accent)' }} />
-                  Gestionar catálogo y stock
+                  Control de inventario y stock
                 </span>
                 <ArrowRight size={14} style={{ color: 'var(--text-muted)' }} />
               </Link>

@@ -4,6 +4,14 @@ import {getChatGPTUser,getProviderUser} from '../../chatgpt-auth';
 import {ensureAccount,accountEnabled} from '../../../lib/accounts';
 import {createLocalUser,authenticateLocalUser,createSession,changeUserPassword,hasLocalCredentials,revokeUserSessions,SESSION_COOKIE_NAME} from '../../../lib/auth-local';
 import {SESSION_TTL_SECONDS} from '../../../lib/jwt';
+import {
+  resolveTenantByRut,
+  resolveTenantMembership,
+  resolveTenantBySlug,
+  normalizeRut,
+} from '../../../lib/tenant-context';
+import { isPlatformOwner, BOOTSTRAP_PLATFORM_OWNER_EMAILS } from '../../../lib/platform';
+import { profileDb } from '../../../db/profiles';
 
 export const dynamic='force-dynamic';
 const json=(body:unknown,status=200)=>Response.json(body,{status,headers:{'Cache-Control':'no-store'}});
@@ -82,6 +90,7 @@ export async function POST(request:Request){
     if(action==='logout'){
       const store=await cookies();
       store.delete(SESSION_COOKIE_NAME);
+      store.delete('dambru_tenant');
       store.delete('__sites_local_auth');
       if(authConfig()){
         try{
@@ -89,7 +98,7 @@ export async function POST(request:Request){
           await client.auth.signOut();
         }catch{}
       }
-      return json({redirect:'/ingresar'});
+      return json({redirect:'/'});
     }
 
     if(action==='recover'){
@@ -204,19 +213,93 @@ export async function POST(request:Request){
               const account=await ensureAccount(user);
               if(accountEnabled(account,user)){
                 setSessionCookie(await cookies(),await createSession(user.userId),origin.startsWith('https:'));
-                return json({redirect:safeReturn(input.returnTo)||'/'});
+                return json({redirect:safeReturn(input.returnTo)||'/admin'});
               }
             }
           }
         }catch{}
       }
 
-      // Native DB login
-      const user=await authenticateLocalUser(email,password);
-      const token=await createSession(user.userId);
-      const store=await cookies();
-      setSessionCookie(store,token,origin.startsWith('https:'));
-      return json({redirect:safeReturn(input.returnTo)||'/'});
+      // 1. Validar credenciales de usuario en la base de datos
+      const user = await authenticateLocalUser(email, password);
+      const db = profileDb();
+
+      // 2. Determinar si es Platform Owner de Dambru Solutions
+      const normalizedEmail = user.email.toLowerCase();
+      const isPlatformAdmin =
+        BOOTSTRAP_PLATFORM_OWNER_EMAILS.includes(normalizedEmail) ||
+        (await isPlatformOwner(user, db));
+
+      const rawRut = typeof input.rut === 'string' ? input.rut.trim() : '';
+      const cleanRut = normalizeRut(rawRut);
+
+      let resolvedTenantSlug = 'barraca-uno';
+
+      if (isPlatformAdmin) {
+        // Platform Owners: conservan autoridad global sobre la plataforma
+        // Si especifican un RUT, se resuelve ese tenant específico
+        if (cleanRut) {
+          const tenant = await resolveTenantByRut(cleanRut, db);
+          if (!tenant) {
+            return json({ error: 'Empresa no encontrada para el RUT ingresado.' }, 404);
+          }
+          if (tenant.status !== 'active') {
+            return json({ error: 'La empresa se encuentra inactiva o suspendida.' }, 403);
+          }
+          resolvedTenantSlug = tenant.slug;
+        } else {
+          // Si no especifican RUT, resolver primer tenant activo o mantener el preferido
+          const store = await cookies();
+          const cookieTenant = store.get('dambru_tenant')?.value;
+          if (cookieTenant) {
+            const t = await resolveTenantBySlug(cookieTenant, db);
+            if (t && t.status === 'active') {
+              resolvedTenantSlug = t.slug;
+            }
+          }
+        }
+      } else {
+        // Usuarios regulares y propietarios de tenant: EL RUT ES OBLIGATORIO
+        if (!cleanRut) {
+          return json({ error: 'Ingresá el RUT de la empresa para acceder.' }, 400);
+        }
+
+        const tenant = await resolveTenantByRut(cleanRut, db);
+        if (!tenant) {
+          return json({ error: 'Empresa no encontrada o RUT incorrecto.' }, 401);
+        }
+
+        if (tenant.status !== 'active') {
+          return json({ error: 'La empresa se encuentra inactiva o suspendida.' }, 403);
+        }
+
+        // Comprobar membresía activa en el tenant identificado por el RUT
+        const membership = await resolveTenantMembership(tenant.id, user.userId, db);
+        if (!membership || membership.status !== 'active') {
+          return json({ error: 'No posees una membresía activa en esta empresa.' }, 403);
+        }
+
+        resolvedTenantSlug = tenant.slug;
+      }
+
+      // 3. Crear sesión y cookies seguras
+      const token = await createSession(user.userId);
+      const store = await cookies();
+      const isSecure = origin.startsWith('https:');
+      setSessionCookie(store, token, isSecure);
+
+      // Registrar tenant autorizado en cookie dambru_tenant
+      store.set('dambru_tenant', resolvedTenantSlug, {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        maxAge: SESSION_TTL_SECONDS,
+        secure: isSecure,
+      });
+
+      const returnUrl = safeReturn(input.returnTo);
+      const targetRedirect = returnUrl && returnUrl !== '/' ? returnUrl : '/admin';
+      return json({ redirect: targetRedirect });
     }
 
     return json({error:'Acción desconocida.'},400);

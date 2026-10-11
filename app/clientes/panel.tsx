@@ -147,9 +147,9 @@ export function ClientesPanel() {
   return (
     <div className="admin-page client-crm-page">
       <header className="account-page-header">
-        <a className="account-logo" href="/"><BrandLogo /></a>
+        <a className="account-logo" href="/admin"><BrandLogo /></a>
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          <a className="back-catalog" href="/"><ArrowLeft size={16} /> Catálogo</a>
+          <a className="back-catalog" href="/admin"><ArrowLeft size={16} /> Dashboard</a>
           <a className="back-catalog" href="/pedidos-admin"><ShoppingBag size={16} /> Pedidos</a>
           <a className="back-catalog" href="/stock">Stock</a>
           <ThemeButton theme={theme} setTheme={setTheme} />

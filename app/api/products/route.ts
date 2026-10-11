@@ -5,9 +5,7 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(req: Request) {
   try {
-    const auth = await requireApiPermission(req, 'products:read', {
-      allowAnonymousStorefront: true,
-    });
+    const auth = await requireApiPermission(req, 'products:read');
 
     if (!auth.authorized || !auth.context) {
       return auth.response!;

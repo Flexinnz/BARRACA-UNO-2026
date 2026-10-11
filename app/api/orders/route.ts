@@ -40,7 +40,17 @@ interface CheckoutPayload {
 export async function POST(req: Request) {
   const context = await getRequestTenantContext(req);
   if (!context || !context.user) {
-    return unauthorizedResponse('Necesitás iniciar sesión para hacer un pedido.');
+    return unauthorizedResponse('Necesitás iniciar sesión para gestionar pedidos.');
+  }
+
+  // Verificar que el usuario tenga membresía activa en la organización o sea Platform Owner
+  const isAuthorized =
+    (context.membership && context.membership.status === 'active') ||
+    context.accessSource === 'platform_support' ||
+    (await isUserPlatformOrTenantAdmin(context.user, context.tenant.slug));
+
+  if (!isAuthorized) {
+    return forbiddenResponse('No tenés autorización para operar en esta organización.');
   }
 
   let body: CheckoutPayload;

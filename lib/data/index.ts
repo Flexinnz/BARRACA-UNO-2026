@@ -965,3 +965,386 @@ export const tenantUsersRepository = {
     return (res.meta?.changes ?? 0) > 0;
   },
 };
+
+// ============================================================================
+// 7. CUSTOMERS REPOSITORY (Tenant-Scoped)
+// ============================================================================
+
+export interface CustomerRecord {
+  userId: string;
+  email: string;
+  displayName: string;
+  company: string;
+  phone: string;
+  bio: string;
+  status: string;
+  createdAt: string;
+  lastSeenAt: string;
+  updatedAt: string;
+  totalSpent: number;
+  ordersCount: number;
+  lastOrderAt: string | null;
+  tenantRole: string | null;
+  platformRole: string | null;
+}
+
+export interface CustomerDetailRecord extends CustomerRecord {
+  orders: OrderRecord[];
+}
+
+export interface CustomerMetrics {
+  total: number;
+  connectedToday: number;
+  buyers: number;
+  newClients: number;
+  vipClients: number;
+  totalRevenue: number;
+  avgTicket: number;
+}
+
+export interface NewCustomerInput {
+  email: string;
+  displayName: string;
+  company?: string;
+  phone?: string;
+  bio?: string;
+}
+
+export interface UpdateCustomerInput {
+  displayName?: string;
+  company?: string;
+  phone?: string;
+  bio?: string;
+  status?: string;
+}
+
+const CUSTOMER_ADMIN_EMAILS = new Set([
+  'caordamian@gmail.com',
+  'brunosaravia09@gmail.com',
+  'brunosaravia9@gmail.com',
+  'integemini@gmail.com',
+]);
+
+export const customersRepository = {
+  /**
+   * Obtiene la lista de clientes con actividad o registrados para el tenant.
+   * Filtra estrictamente personal y directivos de plataforma.
+   */
+  async getCustomers(
+    scope: TenantScope,
+    options?: { search?: string; limit?: number },
+    db?: D1DatabaseLike
+  ): Promise<CustomerRecord[]> {
+    const tenantId = extractTenantId(scope);
+    const database = db ?? (await getDefaultDb());
+
+    const query = `
+      SELECT 
+        a.user_id AS userId,
+        a.email,
+        a.status,
+        COALESCE(p.display_name, a.email) AS displayName,
+        COALESCE(p.company, '') AS company,
+        COALESCE(p.phone, '') AS phone,
+        COALESCE(p.bio, '') AS bio,
+        a.created_at AS createdAt,
+        COALESCE(a.last_seen_at, a.created_at) AS lastSeenAt,
+        a.updated_at AS updatedAt,
+        tu.role AS tenantRole,
+        pu.role AS platformRole,
+        COALESCE((SELECT SUM(total) FROM orders WHERE user_id = a.user_id AND status != 'cancelled' AND (tenant_id = ? OR tenant_id IS NULL)), 0) AS totalSpent,
+        COALESCE((SELECT COUNT(1) FROM orders WHERE user_id = a.user_id AND status != 'cancelled' AND (tenant_id = ? OR tenant_id IS NULL)), 0) AS ordersCount,
+        (SELECT MAX(created_at) FROM orders WHERE user_id = a.user_id AND (tenant_id = ? OR tenant_id IS NULL)) AS lastOrderAt
+      FROM accounts a
+      LEFT JOIN profiles p ON p.user_id = a.user_id
+      LEFT JOIN tenant_users tu ON tu.user_id = a.user_id AND tu.tenant_id = ?
+      LEFT JOIN platform_users pu ON pu.user_id = a.user_id
+      WHERE (tu.role IS NULL OR tu.role NOT IN ('owner', 'admin', 'manager', 'employee'))
+        AND (pu.role IS NULL OR pu.role NOT IN ('platform_owner', 'platform_admin'))
+        AND a.status != 'deleted'
+      UNION ALL
+      SELECT 
+        p.user_id AS userId,
+        p.email,
+        'active' AS status,
+        COALESCE(p.display_name, p.email) AS displayName,
+        COALESCE(p.company, '') AS company,
+        COALESCE(p.phone, '') AS phone,
+        COALESCE(p.bio, '') AS bio,
+        p.updated_at AS createdAt,
+        p.updated_at AS lastSeenAt,
+        p.updated_at AS updatedAt,
+        tu.role AS tenantRole,
+        pu.role AS platformRole,
+        COALESCE((SELECT SUM(total) FROM orders WHERE user_id = p.user_id AND status != 'cancelled' AND (tenant_id = ? OR tenant_id IS NULL)), 0) AS totalSpent,
+        COALESCE((SELECT COUNT(1) FROM orders WHERE user_id = p.user_id AND status != 'cancelled' AND (tenant_id = ? OR tenant_id IS NULL)), 0) AS ordersCount,
+        (SELECT MAX(created_at) FROM orders WHERE user_id = p.user_id AND (tenant_id = ? OR tenant_id IS NULL)) AS lastOrderAt
+      FROM profiles p
+      LEFT JOIN tenant_users tu ON tu.user_id = p.user_id AND tu.tenant_id = ?
+      LEFT JOIN platform_users pu ON pu.user_id = p.user_id
+      WHERE NOT EXISTS (SELECT 1 FROM accounts a WHERE a.user_id = p.user_id)
+        AND (tu.role IS NULL OR tu.role NOT IN ('owner', 'admin', 'manager', 'employee'))
+        AND (pu.role IS NULL OR pu.role NOT IN ('platform_owner', 'platform_admin'))
+      ORDER BY createdAt DESC
+    `;
+
+    const res = await database
+      .prepare(query)
+      .bind(tenantId, tenantId, tenantId, tenantId, tenantId, tenantId, tenantId, tenantId)
+      .all<CustomerRecord>();
+
+    let customers = (res.results ?? []).filter((row) => {
+      const emailLower = (row.email || '').trim().toLowerCase();
+      if (CUSTOMER_ADMIN_EMAILS.has(emailLower)) return false;
+      if (row.tenantRole === 'owner' || row.tenantRole === 'admin') return false;
+      if (row.platformRole === 'platform_owner' || row.platformRole === 'platform_admin') return false;
+      return true;
+    });
+
+    if (options?.search) {
+      const q = options.search.trim().toLowerCase();
+      customers = customers.filter(
+        (c) =>
+          c.displayName.toLowerCase().includes(q) ||
+          c.email.toLowerCase().includes(q) ||
+          c.company.toLowerCase().includes(q) ||
+          c.phone.includes(q)
+      );
+    }
+
+    if (options?.limit && options.limit > 0) {
+      customers = customers.slice(0, options.limit);
+    }
+
+    return customers;
+  },
+
+  /**
+   * Obtiene la ficha de un cliente con su historial de pedidos en el tenant.
+   */
+  async getCustomerById(
+    scope: TenantScope,
+    userId: string,
+    db?: D1DatabaseLike
+  ): Promise<CustomerDetailRecord | null> {
+    const tenantId = extractTenantId(scope);
+    const database = db ?? (await getDefaultDb());
+
+    const customerRes = await database
+      .prepare(
+        `SELECT 
+           COALESCE(a.user_id, p.user_id) AS userId,
+           COALESCE(a.email, p.email) AS email,
+           COALESCE(a.status, 'active') AS status,
+           COALESCE(p.display_name, a.email, p.email) AS displayName,
+           COALESCE(p.company, '') AS company,
+           COALESCE(p.phone, '') AS phone,
+           COALESCE(p.bio, '') AS bio,
+           COALESCE(a.created_at, p.updated_at) AS createdAt,
+           COALESCE(a.last_seen_at, a.created_at, p.updated_at) AS lastSeenAt,
+           COALESCE(a.updated_at, p.updated_at) AS updatedAt,
+           tu.role AS tenantRole,
+           pu.role AS platformRole,
+           COALESCE((SELECT SUM(total) FROM orders WHERE user_id = COALESCE(a.user_id, p.user_id) AND status != 'cancelled' AND (tenant_id = ? OR tenant_id IS NULL)), 0) AS totalSpent,
+           COALESCE((SELECT COUNT(1) FROM orders WHERE user_id = COALESCE(a.user_id, p.user_id) AND status != 'cancelled' AND (tenant_id = ? OR tenant_id IS NULL)), 0) AS ordersCount,
+           (SELECT MAX(created_at) FROM orders WHERE user_id = COALESCE(a.user_id, p.user_id) AND (tenant_id = ? OR tenant_id IS NULL)) AS lastOrderAt
+         FROM accounts a
+         LEFT JOIN profiles p ON p.user_id = a.user_id
+         LEFT JOIN tenant_users tu ON tu.user_id = a.user_id AND tu.tenant_id = ?
+         LEFT JOIN platform_users pu ON pu.user_id = a.user_id
+         WHERE a.user_id = ?
+         LIMIT 1`
+      )
+      .bind(tenantId, tenantId, tenantId, tenantId, userId.trim())
+      .first<CustomerRecord>();
+
+    let customer = customerRes;
+
+    if (!customer) {
+      // Intentar fallback si solo existe en profiles
+      const profileFallback = await database
+        .prepare(
+          `SELECT 
+             p.user_id AS userId,
+             p.email,
+             'active' AS status,
+             COALESCE(p.display_name, p.email) AS displayName,
+             COALESCE(p.company, '') AS company,
+             COALESCE(p.phone, '') AS phone,
+             COALESCE(p.bio, '') AS bio,
+             p.updated_at AS createdAt,
+             p.updated_at AS lastSeenAt,
+             p.updated_at AS updatedAt,
+             tu.role AS tenantRole,
+             pu.role AS platformRole,
+             COALESCE((SELECT SUM(total) FROM orders WHERE user_id = p.user_id AND status != 'cancelled' AND (tenant_id = ? OR tenant_id IS NULL)), 0) AS totalSpent,
+             COALESCE((SELECT COUNT(1) FROM orders WHERE user_id = p.user_id AND status != 'cancelled' AND (tenant_id = ? OR tenant_id IS NULL)), 0) AS ordersCount,
+             (SELECT MAX(created_at) FROM orders WHERE user_id = p.user_id AND (tenant_id = ? OR tenant_id IS NULL)) AS lastOrderAt
+           FROM profiles p
+           LEFT JOIN tenant_users tu ON tu.user_id = p.user_id AND tu.tenant_id = ?
+           LEFT JOIN platform_users pu ON pu.user_id = p.user_id
+           WHERE p.user_id = ?
+           LIMIT 1`
+        )
+        .bind(tenantId, tenantId, tenantId, tenantId, userId.trim())
+        .first<CustomerRecord>();
+
+      if (!profileFallback) return null;
+      customer = profileFallback;
+    }
+
+    // Obtener pedidos del cliente en este tenant
+    const ordersRes = await database
+      .prepare(
+        `SELECT id, tenant_id AS tenantId, user_id AS userId, user_email AS userEmail,
+                user_name AS userName, status, payment_method AS paymentMethod,
+                shipping_address AS shippingAddress, shipping_city AS shippingCity,
+                shipping_phone AS shippingPhone, notes, subtotal, tax, total,
+                created_at AS createdAt, updated_at AS updatedAt
+         FROM orders
+         WHERE (user_id = ? OR user_email = ?) AND (tenant_id = ? OR tenant_id IS NULL)
+         ORDER BY created_at DESC
+         LIMIT 50`
+      )
+      .bind(userId.trim(), customer.email, tenantId)
+      .all<OrderRecord>();
+
+    return {
+      ...customer,
+      orders: ordersRes.results ?? [],
+    };
+  },
+
+  /**
+   * Registra un nuevo cliente en el sistema.
+   */
+  async createCustomer(
+    scope: TenantScope,
+    input: NewCustomerInput,
+    db?: D1DatabaseLike
+  ): Promise<CustomerRecord> {
+    extractTenantId(scope); // Validar scope
+    const database = db ?? (await getDefaultDb());
+    const now = new Date().toISOString();
+    const userId = `usr_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    const email = input.email.trim().toLowerCase();
+    const displayName = input.displayName.trim();
+    const company = (input.company || '').trim();
+    const phone = (input.phone || '').trim();
+    const bio = (input.bio || '').trim();
+
+    await database
+      .prepare(
+        `INSERT INTO accounts (user_id, email, status, created_at, last_seen_at, updated_at)
+         VALUES (?, ?, 'active', ?, ?, ?)`
+      )
+      .bind(userId, email, now, now, now)
+      .run();
+
+    await database
+      .prepare(
+        `INSERT INTO profiles (user_id, email, display_name, company, phone, bio, avatar, accent, theme, density, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'initials', 'ocean', 'dark', 'comfortable', ?)`
+      )
+      .bind(userId, email, displayName, company, phone, bio, now)
+      .run();
+
+    return {
+      userId,
+      email,
+      displayName,
+      company,
+      phone,
+      bio,
+      status: 'active',
+      createdAt: now,
+      lastSeenAt: now,
+      updatedAt: now,
+      totalSpent: 0,
+      ordersCount: 0,
+      lastOrderAt: null,
+      tenantRole: null,
+      platformRole: null,
+    };
+  },
+
+  /**
+   * Actualiza los datos de un cliente (perfil y estado).
+   */
+  async updateCustomer(
+    scope: TenantScope,
+    userId: string,
+    input: UpdateCustomerInput,
+    db?: D1DatabaseLike
+  ): Promise<boolean> {
+    extractTenantId(scope); // Validar scope
+    const database = db ?? (await getDefaultDb());
+    const now = new Date().toISOString();
+    const trimmedId = userId.trim();
+
+    if (
+      input.displayName !== undefined ||
+      input.company !== undefined ||
+      input.phone !== undefined ||
+      input.bio !== undefined
+    ) {
+      await database
+        .prepare(
+          `UPDATE profiles
+           SET display_name = COALESCE(?, display_name),
+               company = COALESCE(?, company),
+               phone = COALESCE(?, phone),
+               bio = COALESCE(?, bio),
+               updated_at = ?
+           WHERE user_id = ?`
+        )
+        .bind(
+          input.displayName?.trim() ?? null,
+          input.company?.trim() ?? null,
+          input.phone?.trim() ?? null,
+          input.bio?.trim() ?? null,
+          now,
+          trimmedId
+        )
+        .run();
+    }
+
+    if (input.status !== undefined) {
+      await database
+        .prepare('UPDATE accounts SET status = ?, updated_at = ? WHERE user_id = ?')
+        .bind(input.status.trim(), now, trimmedId)
+        .run();
+    }
+
+    return true;
+  },
+
+  /**
+   * Elimina lógicamente (soft-delete) un cliente del sistema.
+   * Requiere permiso 'customers:delete'.
+   */
+  async deleteCustomer(
+    scope: TenantScope,
+    userId: string,
+    db?: D1DatabaseLike
+  ): Promise<boolean> {
+    extractTenantId(scope); // Validar scope
+    const database = db ?? (await getDefaultDb());
+    const now = new Date().toISOString();
+    const trimmedId = userId.trim();
+
+    const res = await database
+      .prepare("UPDATE accounts SET status = 'deleted', updated_at = ? WHERE user_id = ?")
+      .bind(now, trimmedId)
+      .run();
+
+    await database
+      .prepare(
+        "UPDATE profiles SET display_name = 'Cliente Eliminado', company = '', phone = '', bio = '', updated_at = ? WHERE user_id = ?"
+      )
+      .bind(now, trimmedId)
+      .run();
+
+    return (res.meta?.changes ?? 0) > 0;
+  },
+};

@@ -53,11 +53,6 @@ export const SAAS_NAV_SECTIONS: NavSection[] = [
     title: 'OPERACIONES',
     items: [
       {
-        title: 'Catálogo & Tienda',
-        href: '/',
-        icon: Store,
-      },
-      {
         title: 'Inventario & Stock',
         href: '/stock',
         icon: Boxes,

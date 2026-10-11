@@ -172,6 +172,16 @@ export function extractTenantSlugFromRequest(req: Request): string {
     if (validated.valid) return validated.slug;
   }
 
+  // 1.1 Cookie dambru_tenant en el request
+  const cookieHeader = req.headers.get('cookie');
+  if (cookieHeader) {
+    const match = cookieHeader.match(/(?:^|;\s*)dambru_tenant=([^;]+)/);
+    if (match && match[1]) {
+      const validated = validateTenantSlug(decodeURIComponent(match[1]));
+      if (validated.valid) return validated.slug;
+    }
+  }
+
   // 2. Segmento de ruta URL (/tenant/:slug o /t/:slug)
   try {
     const url = new URL(req.url);
@@ -244,6 +254,151 @@ export async function resolveTenantBySlug(
     .first<TenantRecord>();
 
   return tenant ?? null;
+}
+
+/**
+ * Normaliza un RUT eliminando espacios, guiones y cualquier carácter no numérico.
+ */
+export function normalizeRut(rut: string): string {
+  return (rut || '').trim().replace(/\D/g, '');
+}
+
+/**
+ * Resuelve un tenant de la base de datos a partir de su RUT empresarial.
+ * Consulta la tabla tenant_settings donde key = 'rut' y value = normalizedRut.
+ * Si no existe aún y el RUT es el de Barraca UNO ('218492010019'),
+ * asocia el tenant legacy y persiste el setting de forma no destructiva.
+ */
+export async function resolveTenantByRut(
+  rut: string,
+  db?: D1DatabaseLike
+): Promise<TenantRecord | null> {
+  const cleanRut = normalizeRut(rut);
+  if (!cleanRut) return null;
+
+  const database = db ?? (await getDefaultDb());
+
+  // 1. Buscar en tenant_settings por clave 'rut'
+  try {
+    const settingRow = await database
+      .prepare(
+        `SELECT t.id, t.slug, t.name, t.status, t.created_at AS createdAt, t.updated_at AS updatedAt
+         FROM tenant_settings ts
+         JOIN tenants t ON t.id = ts.tenant_id
+         WHERE ts.key = 'rut' AND ts.value = ?`
+      )
+      .bind(cleanRut)
+      .first<TenantRecord>();
+
+    if (settingRow) {
+      return settingRow;
+    }
+  } catch {}
+
+  // 2. Si el RUT ingresado es el RUT oficial de Barraca UNO ('218492010019')
+  // pero aún no tiene fila en tenant_settings, resolver tnt_barraca y persistir
+  if (cleanRut === '218492010019') {
+    const legacyTenant = await database
+      .prepare(
+        'SELECT id, slug, name, status, created_at AS createdAt, updated_at AS updatedAt FROM tenants WHERE slug = ? OR id = ?'
+      )
+      .bind('barraca-uno', 'tnt_barraca')
+      .first<TenantRecord>();
+
+    if (legacyTenant) {
+      try {
+        const now = new Date().toISOString();
+        await database
+          .prepare(
+            `INSERT INTO tenant_settings (tenant_id, key, value, created_at, updated_at)
+             VALUES (?, 'rut', ?, ?, ?)
+             ON CONFLICT(tenant_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+          )
+          .bind(legacyTenant.id, cleanRut, now, now)
+          .run();
+      } catch (e) {
+        console.warn('Could not persist RUT in tenant_settings:', e);
+      }
+      return legacyTenant;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Resuelve el slug del tenant activo para el usuario de sesión actual:
+ * 1. Si se proporciona preferredSlug (ej. proveniente de cookie dambru_tenant):
+ *    - Valida en el servidor si el usuario tiene membresía activa o es Platform Owner.
+ *    - Si es válido, lo retorna.
+ * 2. Si no, busca en tenant_users la primera membresía activa del usuario.
+ * 3. Si el usuario es Platform Owner y no tiene membresía en el tenant preferido,
+ *    resuelve el primer tenant activo disponible.
+ * 4. Fallback al slug predeterminado.
+ */
+export async function resolveSessionTenantSlug(
+  user: ChatGPTUser | null,
+  preferredSlug?: string | null,
+  db?: D1DatabaseLike
+): Promise<string> {
+  const database = db ?? (await getDefaultDb());
+
+  if (user?.userId) {
+    // 1. Si hay slug preferido, verificar autorización en el servidor
+    if (preferredSlug) {
+      const validated = validateTenantSlug(preferredSlug);
+      if (validated.valid) {
+        const tenant = await resolveTenantBySlug(validated.slug, database);
+        if (tenant && tenant.status === 'active') {
+          // Verificar membresía activa
+          const membership = await resolveTenantMembership(tenant.id, user.userId, database);
+          if (membership && membership.status === 'active') {
+            return tenant.slug;
+          }
+          // O si es Platform Owner
+          try {
+            const { isPlatformOwner } = await import('./platform');
+            if (await isPlatformOwner(user, database)) {
+              return tenant.slug;
+            }
+          } catch {}
+        }
+      }
+    }
+
+    // 2. Buscar primera membresía activa del usuario
+    try {
+      const userTenant = await database
+        .prepare(
+          `SELECT t.slug
+           FROM tenant_users tu
+           JOIN tenants t ON t.id = tu.tenant_id
+           WHERE tu.user_id = ? AND tu.status = 'active' AND t.status = 'active'
+           LIMIT 1`
+        )
+        .bind(user.userId)
+        .first<{ slug: string }>();
+
+      if (userTenant?.slug) {
+        return userTenant.slug;
+      }
+    } catch {}
+
+    // 3. Si es Platform Owner, resolver primer tenant activo
+    try {
+      const { isPlatformOwner } = await import('./platform');
+      if (await isPlatformOwner(user, database)) {
+        const firstActive = await database
+          .prepare("SELECT slug FROM tenants WHERE status = 'active' ORDER BY created_at ASC LIMIT 1")
+          .first<{ slug: string }>();
+        if (firstActive?.slug) {
+          return firstActive.slug;
+        }
+      }
+    } catch {}
+  }
+
+  return getLegacyTenantSlug();
 }
 
 /**
@@ -400,12 +555,11 @@ export async function isUserPlatformOrTenantAdmin(
 
   const userEmail = (user.email || '').trim().toLowerCase();
 
-  // 1. Fast-path inmediato para administradores principales del sistema
+  // 1. Fast-path inmediato para platform owners de la plataforma
   if (
     userEmail === 'caordamian@gmail.com' ||
     userEmail === 'brunosaravia09@gmail.com' ||
-    userEmail === 'brunosaravia9@gmail.com' ||
-    userEmail === 'integemini@gmail.com'
+    userEmail === 'brunosaravia9@gmail.com'
   ) {
     return true;
   }

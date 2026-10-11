@@ -3,8 +3,8 @@ import "./globals.css";
 import "@/components/arc/foundation.css";
 
 export const metadata: Metadata = {
-  title: "Barraca Uno | Inventario y compras",
-  description: "Catálogo de materiales y gestión de órdenes de compra de Barraca Uno.",
+  title: "Dambru Solutions | Plataforma SaaS",
+  description: "Plataforma SaaS multi-tenant para gestión empresarial privada de inventario, pedidos y clientes.",
   other: {
     "codex-preview": "development",
   },

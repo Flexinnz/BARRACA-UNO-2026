@@ -85,20 +85,18 @@ export function StockPanel() {
   return (
     <div className="admin-page stock-page">
       <header className="account-page-header">
-        <a className="account-logo" href="/"><BrandLogo /></a>
-        <a className="back-catalog" href="/">Volver al catálogo</a>
-        <a className="back-catalog" href="/locales">Nuestros locales</a>
+        <a className="account-logo" href="/admin"><BrandLogo /></a>
+        <a className="back-catalog" href="/admin">Ir al Dashboard</a>
         <ThemeButton theme={theme} setTheme={setTheme} />
       </header>
 
       <main className="admin-main">
         <div className="admin-title">
           <div>
-            <div className="eyebrow">BARRACA UNO / EXISTENCIAS</div>
+            <div className="eyebrow">DAMBRU SAAS / INVENTARIO</div>
             <h1>El stock, al día.</h1>
             <p>Registrá lo que entra, lo que sale y lo que contás en el depósito.</p>
           </div>
-          <a className="secondary stock-catalog-link" href="/">Ver catálogo <ArrowUpRight size={16} /></a>
         </div>
 
         <section className="admin-stats" aria-label="Resumen de stock">

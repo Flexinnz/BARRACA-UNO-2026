@@ -1,12 +1,17 @@
 import React from 'react';
 import Link from 'next/link';
+import { cookies } from 'next/headers';
 import { requireChatGPTUser } from '../chatgpt-auth';
-import { isUserPlatformOrTenantAdmin, resolveTenantContext } from '../../lib/tenant-context';
+import {
+  isUserPlatformOrTenantAdmin,
+  resolveTenantContext,
+  resolveSessionTenantSlug,
+} from '../../lib/tenant-context';
 import { AppShell, PageContainer } from '@/components/layout';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { StockModule } from '@/components/stock';
-import { AlertCircle, ExternalLink, LayoutDashboard } from 'lucide-react';
+import { AlertCircle, LayoutDashboard } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 export const metadata = {
@@ -16,19 +21,22 @@ export const metadata = {
 
 export default async function StockPage() {
   const user = await requireChatGPTUser('/stock');
-  const isAdmin = await isUserPlatformOrTenantAdmin(user, 'barraca-uno');
+  const cookieStore = await cookies();
+  const cookieSlug = cookieStore.get('dambru_tenant')?.value;
+  const targetTenantSlug = await resolveSessionTenantSlug(user, cookieSlug);
+  const isAdmin = await isUserPlatformOrTenantAdmin(user, targetTenantSlug);
 
   if (!isAdmin) {
     return (
       <AppShell
-        tenantName="Barraca Uno"
-        tenantSlug="barraca-uno"
+        tenantName="Dambru SaaS"
+        tenantSlug={targetTenantSlug}
         userEmail={user.email}
         userName={user.fullName || user.displayName}
         isAdmin={false}
       >
         <PageContainer
-          eyebrow="BARRACA UNO · SEGURIDAD SAAS"
+          eyebrow="DAMBRU SAAS · SEGURIDAD EMPRESARIAL"
           title="Acceso Restringido"
           description="El módulo de inventario requiere permisos de administración en la organización."
         >
@@ -44,10 +52,10 @@ export default async function StockPage() {
             </p>
             <div className="flex justify-center gap-3">
               <Button asChild variant="outline">
-                <Link href="/">Ir a Tienda</Link>
+                <Link href="/admin">Dashboard Principal</Link>
               </Button>
               <Button asChild>
-                <Link href="/admin">Dashboard Principal</Link>
+                <Link href="/cuenta">Mi Cuenta</Link>
               </Button>
             </div>
           </Card>
@@ -57,9 +65,9 @@ export default async function StockPage() {
   }
 
   // Resolver contexto seguro de la organización
-  const context = await resolveTenantContext({ tenantSlug: 'barraca-uno', user });
-  const tenantName = context ? context.tenant.name : 'Barraca Uno';
-  const tenantSlug = context ? context.tenant.slug : 'barraca-uno';
+  const context = await resolveTenantContext({ tenantSlug: targetTenantSlug, user });
+  const tenantName = context ? context.tenant.name : 'Dambru SaaS';
+  const tenantSlug = context ? context.tenant.slug : targetTenantSlug;
 
   return (
     <AppShell
@@ -83,12 +91,6 @@ export default async function StockPage() {
               <Link href="/admin">
                 <LayoutDashboard size={14} />
                 <span className="hidden sm:inline">Dashboard</span>
-              </Link>
-            </Button>
-            <Button asChild variant="outline" size="sm" className="gap-1.5 shadow-xs">
-              <Link href="/" target="_blank">
-                <ExternalLink size={14} />
-                <span className="hidden sm:inline">Ver Catálogo</span>
               </Link>
             </Button>
           </div>

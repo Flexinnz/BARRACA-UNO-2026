@@ -113,20 +113,20 @@ export function OrdersRegistry(){
   return (
     <div className="admin-page">
       <header className="account-page-header">
-        <a className="account-logo" href="/"><BrandLogo/></a>
+        <a className="account-logo" href="/admin"><BrandLogo/></a>
         <nav className="admin-nav-links">
           <a href="/administracion">Cuentas</a>
           <a href="/pedidos-admin" className="active">Pedidos</a>
           <a href="/stock">Stock</a>
         </nav>
-        <a className="back-catalog" href="/">Volver al catálogo</a>
+        <a className="back-catalog" href="/admin">Ir al Dashboard</a>
         <ThemeButton theme={theme} setTheme={setTheme}/>
       </header>
 
       <main className="admin-main">
         <div className="admin-title">
           <div>
-            <div className="eyebrow">BARRACA UNO / ADMINISTRACIÓN</div>
+            <div className="eyebrow">DAMBRU SAAS / ADMINISTRACIÓN</div>
             <h1>Pedidos entrantes.</h1>
             <p>Gestioná los pedidos, verificá pagos y coordiná envíos.</p>
           </div>

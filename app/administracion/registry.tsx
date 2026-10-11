@@ -167,11 +167,11 @@ export function AccountRegistry() {
   return (
     <div className="admin-page">
       <header className="account-page-header">
-        <a className="account-logo" href="/">
+        <a className="account-logo" href="/admin">
           <BrandLogo />
         </a>
-        <a className="back-catalog" href="/">
-          Volver al catálogo
+        <a className="back-catalog" href="/admin">
+          Ir al Dashboard
         </a>
         <ThemeButton theme={theme} setTheme={setTheme} />
       </header>
@@ -179,7 +179,7 @@ export function AccountRegistry() {
       <main className="admin-main">
         <div className="admin-title">
           <div>
-            <div className="eyebrow">BARRACA UNO / ADMINISTRACIÓN</div>
+            <div className="eyebrow">DAMBRU SAAS / ADMINISTRACIÓN</div>
             <h1>Las cuentas de la empresa.</h1>
             <p>Registro de usuarios, estado de acceso y acciones del administrador.</p>
           </div>

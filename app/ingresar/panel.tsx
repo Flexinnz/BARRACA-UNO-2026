@@ -70,7 +70,7 @@ export function LoginPanel({
           returnTo,
           clientType,
           company: clientType === 'empresa' ? company : undefined,
-          rut: clientType === 'empresa' ? rut : undefined,
+          rut: rut ? rut.trim() : undefined,
           phone: clientType === 'empresa' ? phone : undefined,
         }),
       });
@@ -93,27 +93,38 @@ export function LoginPanel({
   return (
     <div className="login-page">
       <header className="account-page-header">
-        <a className="account-logo" href="/">
-          <BrandLogo />
+        <a className="account-logo flex items-center gap-2" href="/" style={{ textDecoration: 'none', color: 'inherit' }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg, #0284c7, #1d4ed8)', color: '#fff', fontWeight: 700, fontSize: 16 }}>
+            D
+          </div>
+          <span style={{ fontWeight: 700, fontSize: 18, letterSpacing: '-0.02em', color: 'var(--text-primary)' }}>
+            Dambru Solutions
+          </span>
         </a>
         <ThemeButton theme={theme} setTheme={setTheme} />
       </header>
 
       <main className="login-layout">
         <aside className="login-story">
-          <div className="eyebrow">UNO PARA TODOS · PLATAFORMA B2B & B2C</div>
+          <div className="eyebrow">DAMBRU SOLUTIONS · SAAS MULTI-TENANT</div>
           <h1>
-            Tu obra empieza
+            Gestión empresarial
             <br />
-            en la barraca.
+            privada y centralizada.
           </h1>
           <p>
-            Materiales, existencias y compras.
-            <br />
-            Facturación con RUT oficial DGI y cuenta corriente.
+            Plataforma B2B para administración de inventario, pedidos,
+            clientes y operaciones con estricto aislamiento por organización.
           </p>
-          <CityScape className="login-city" />
-          <small>BARRACA UNO · SISTEMA EMPRESARIAL v2.3</small>
+          <div style={{ margin: '24px 0', padding: '14px 18px', borderRadius: 10, background: 'var(--surface-muted)', border: '1px solid var(--border)' }}>
+            <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>
+              Tenant inicial: Barraca UNO
+            </div>
+            <div style={{ fontSize: '12px', color: 'var(--text-soft)' }}>
+              RUT de acceso: <code>218492010019</code>
+            </div>
+          </div>
+          <small>DAMBRU SOLUTIONS · PLATAFORMA SAAS EMPRESARIAL</small>
         </aside>
 
         <section className="login-card">
@@ -127,16 +138,16 @@ export function LoginPanel({
               ? 'Recuperá tu acceso'
               : mode === 'reset'
               ? 'Nueva contraseña'
-              : 'Bienvenido a Barraca Uno'}
+              : 'Iniciar sesión'}
           </h2>
           <p>
             {mode === 'register'
-              ? 'Elegí tu tipo de cuenta (Particular o Empresa) para registrarte.'
+              ? 'Elegí tu tipo de cuenta para registrarte en el sistema.'
               : mode === 'recover'
               ? 'Te enviaremos un enlace para cambiar tu contraseña.'
               : mode === 'reset'
               ? 'Elegí una contraseña nueva para tu cuenta.'
-              : 'Entrá con tu correo y tu contraseña.'}
+              : 'Ingresá el RUT de la empresa, tu correo y contraseña.'}
           </p>
 
           {!configured ? (
@@ -260,6 +271,27 @@ export function LoginPanel({
                       </div>
                     </label>
                   </>
+                )}
+
+                {mode === 'login' && (
+                  <label>
+                    RUT de la empresa
+                    <div className="login-input">
+                      <Building2 size={18} />
+                      <input
+                        type="text"
+                        required
+                        maxLength={12}
+                        placeholder="218492010019"
+                        value={rut}
+                        onChange={(e) => setRut(e.target.value.replace(/\D/g, ''))}
+                        disabled={busy}
+                      />
+                    </div>
+                    <small style={{ fontSize: '11px', color: 'var(--text-soft)', marginTop: '2px', display: 'block' }}>
+                      Identificador tributario DGI (12 dígitos). Para Barraca UNO: 218492010019
+                    </small>
+                  </label>
                 )}
 
                 {mode !== 'reset' && (
